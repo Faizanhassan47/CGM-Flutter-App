@@ -1,0 +1,12 @@
+name: aima_style
+description: Centralized visual design tokens and theme for the Aima application.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter

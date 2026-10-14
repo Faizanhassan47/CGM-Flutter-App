@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="gradPrimary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8C5CDB" />
+      <stop offset="100%" stop-color="#583295" />
+    </linearGradient>
+    <linearGradient id="gradSecondary" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#01B4F1" />
+      <stop offset="100%" stop-color="#00D2FF" />
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(256, 256)">
+    <!-- Base A structure -->
+    <path d="M -100,150 L 0,-140 L 100,150" fill="none" stroke="url(#gradPrimary)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- A crossbar with a health wave/pulse -->
+    <path d="M -60,40 L -25,40 L 0,-15 L 30,100 L 55,40 L 80,40" fill="none" stroke="url(#gradSecondary)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Surrounding orbit (Continuous monitoring) -->
+    <path d="M -190,0 A 190,190 0 1,1 190,0 A 190,190 0 0,1 -120,147" fill="none" stroke="url(#gradSecondary)" stroke-width="24" stroke-linecap="round" />
+    
+    <!-- Little droplet ending the orbit -->
+    <path d="M -120,107 C -150,147 -150,177 -120,177 C -90,177 -90,147 -120,107 Z" fill="url(#gradSecondary)" />
+  </g>
+</svg>
