@@ -119,18 +119,24 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   Future<bool> restoreSession() async {
-    _accessToken = await _storage.read(key: 'aima_access_token');
-    _refreshToken = await _storage.read(key: 'aima_refresh_token');
-    if (_accessToken == null) return false;
     try {
-      await getProfile();
-      return true;
-    } on ApiException catch (e) {
-      if (e.statusCode != 401 || !await _refresh()) {
-        await _clearTokens();
-        return false;
+      _accessToken = await _storage.read(key: 'aima_access_token');
+      _refreshToken = await _storage.read(key: 'aima_refresh_token');
+      if (_accessToken == null) return false;
+      try {
+        await getProfile();
+        return true;
+      } on ApiException catch (e) {
+        if (e.statusCode != 401 || !await _refresh()) {
+          await _clearTokens();
+          return false;
+        }
+        return true;
       }
-      return true;
+    } catch (e) {
+      debugPrint('[API] Failed to restore session from secure storage: $e');
+      await _clearTokens();
+      return false;
     }
   }
 

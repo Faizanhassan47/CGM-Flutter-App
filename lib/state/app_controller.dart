@@ -821,7 +821,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _upload(List<GlucoseSample> samples) async {
-    if (!authenticated) return;
+    // Cached SDK samples may be emitted during startup even when no sensor is
+    // currently connected. Do not call the monitoring API in that state.
+    if (!authenticated || connection != CgmConnectionState.connected) return;
     final prefs = await SharedPreferences.getInstance();
     final currentWear = wear ?? await CgmSdk.currentWear();
     if (currentWear == null) return;
@@ -835,6 +837,8 @@ class AppController extends ChangeNotifier {
             .toList()
           ..sort((a, b) => a.seq.compareTo(b.seq));
     for (var offset = 0; offset < pending.length; offset += 500) {
+      // The sensor may disconnect while a multi-batch upload is in progress.
+      if (connection != CgmConnectionState.connected) break;
       final batch = pending.skip(offset).take(500).toList();
       final valid = batch
           .where((x) => x.value != null && !x.warmup && !x.abnormal)

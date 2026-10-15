@@ -10,6 +10,54 @@ import 'widgets/brand_header.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // In release APKs, Flutter defaults to a blank/white container on unhandled errors.
+  // This custom ErrorWidget ensures any startup error is visibly readable instead of a white screen.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Application Startup Error',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    details.exceptionAsString(),
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 13,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    details.stack?.toString() ?? '',
+                    style: const TextStyle(color: Colors.black54, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
+
   runApp(const AimaApp());
 }
 
