@@ -23,7 +23,7 @@ class BackendBinding {
   final int sensorId;
 }
 
-/// Centralized API Service for the Aima CGM Flutter application.
+/// Centralized API Service for the Circle CGM Flutter application.
 /// Provides complete coverage for all backend endpoints:
 /// - Authentication & Account Management
 /// - User Profile
@@ -180,7 +180,7 @@ class ApiService {
         'email': email,
         'password': password,
         'rememberMe': true,
-        'deviceInfo': 'Aima Flutter CGM',
+        'deviceInfo': 'Circle Flutter CGM',
       }),
     );
     final data = _decode(response);
@@ -203,7 +203,7 @@ class ApiService {
       'provider': provider,
       'idToken': idToken,
       if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
-      'deviceInfo': 'Aima Flutter CGM',
+      'deviceInfo': 'Circle Flutter CGM',
     });
     await _saveTokens('${data['accessToken']}', '${data['refreshToken']}');
     return data is Map<String, dynamic> ? data : <String, dynamic>{};
@@ -266,11 +266,11 @@ class ApiService {
 
   /// Change password for currently authenticated user.
   Future<void> changePassword({
-    required String currentPassword,
+    String? currentPassword,
     required String newPassword,
   }) async {
     await post('api/Auth/change-password', {
-      'currentPassword': currentPassword,
+      if (currentPassword != null) 'currentPassword': currentPassword,
       'newPassword': newPassword,
     });
   }
@@ -391,7 +391,7 @@ class ApiService {
     int? batteryMv,
   }) async {
     final device = await registerDevice(
-      deviceName: 'Aima CGM',
+      deviceName: 'Circle CGM',
       deviceType: form == 'half' ? 'Reusable' : 'Disposable',
       deviceModel: form == 'half' ? 'G-B' : 'G-AA',
       serialNumber: deviceSerial,

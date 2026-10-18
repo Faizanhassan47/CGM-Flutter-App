@@ -71,6 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await widget.controller.googleLogin(
         idToken: idToken,
         fullName: account.displayName,
+        email: account.email,
       );
     } catch (e) {
       setState(() => validationError = e.toString());
@@ -97,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const BrandHeader(),
                   const SizedBox(height: 38),
 
-                  // Welcome back! 
+                  // Welcome back!
                   Row(
                     children: const [
                       Text(

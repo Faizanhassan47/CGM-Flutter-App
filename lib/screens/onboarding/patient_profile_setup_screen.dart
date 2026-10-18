@@ -16,7 +16,10 @@ class PatientProfileSetupScreen extends StatefulWidget {
 
 class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
   late final TextEditingController nameController;
+  late final TextEditingController emailController;
   late final TextEditingController phoneController;
+  late final TextEditingController dateOfBirthController;
+  String? selectedGender;
   late String selectedUnit;
   late bool pushNotifications;
   late bool criticalAlerts;
@@ -25,9 +28,16 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
   void initState() {
     super.initState();
     nameController = TextEditingController(text: widget.controller.fullName);
+    emailController = TextEditingController(text: widget.controller.userEmail);
     phoneController = TextEditingController(
       text: widget.controller.phoneNumber,
     );
+    dateOfBirthController = TextEditingController(
+      text: widget.controller.dateOfBirth,
+    );
+    selectedGender = widget.controller.gender.trim().isEmpty
+        ? null
+        : widget.controller.gender;
     selectedUnit = widget.controller.preferredGlucoseUnit;
     pushNotifications = widget.controller.pushNotifications;
     criticalAlerts = widget.controller.criticalAlerts;
@@ -36,8 +46,27 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
   @override
   void dispose() {
     nameController.dispose();
+    emailController.dispose();
     phoneController.dispose();
+    dateOfBirthController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDateOfBirth() async {
+    final now = DateTime.now();
+    final existingDate = DateTime.tryParse(dateOfBirthController.text);
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: existingDate ?? DateTime(now.year - 30),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+    if (pickedDate == null) return;
+
+    dateOfBirthController.text =
+        '${pickedDate.year.toString().padLeft(4, '0')}-'
+        '${pickedDate.month.toString().padLeft(2, '0')}-'
+        '${pickedDate.day.toString().padLeft(2, '0')}';
   }
 
   void _onSaveAndContinue() async {
@@ -48,11 +77,31 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
       ).showSnackBar(const SnackBar(content: Text('Please enter your name.')));
       return;
     }
+    if (emailController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your Google email is required.')),
+      );
+      return;
+    }
+    if (dateOfBirthController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your date of birth.')),
+      );
+      return;
+    }
+    if (selectedGender == null || selectedGender!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your gender.')),
+      );
+      return;
+    }
 
     try {
       await widget.controller.saveProfile(
         name: name,
         phone: phoneController.text.trim(),
+        dob: dateOfBirthController.text.trim(),
+        selectedGender: selectedGender,
         unit: selectedUnit,
       );
       await widget.controller.setPreferences(
@@ -72,6 +121,44 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
+    }
+  }
+
+  Future<void> _onCancelAccountCreation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel account creation?'),
+        content: const Text(
+          'Your incomplete account will be permanently deleted and you will return to the sign-in screen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep setting up'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: AppColors.surface,
+              elevation: 0,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await widget.controller.deleteAccount();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not cancel account creation: $error')),
+      );
     }
   }
 
@@ -108,16 +195,53 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
 
               CustomUnderlineField(
                 controller: nameController,
-                label: 'Your Name',
+                label: 'Full Name',
                 hintText: 'Enter your name',
+                prefixIcon: Icons.person_outline_rounded,
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
+
+              CustomUnderlineField(
+                controller: emailController,
+                label: 'Google Account Email',
+                hintText: 'Google account email',
+                prefixIcon: Icons.mail_outline_rounded,
+                keyboardType: TextInputType.emailAddress,
+                readOnly: true,
+              ),
+              const SizedBox(height: 20),
 
               CustomUnderlineField(
                 controller: phoneController,
                 label: 'Phone Number (Optional)',
                 hintText: 'e.g. +1 (555) 000-0000',
                 keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 20),
+
+              CustomUnderlineField(
+                controller: dateOfBirthController,
+                label: 'Date of Birth',
+                hintText: 'YYYY-MM-DD',
+                prefixIcon: Icons.calendar_month_outlined,
+                readOnly: true,
+                onTap: _pickDateOfBirth,
+              ),
+              const SizedBox(height: 20),
+
+              DropdownButtonFormField<String>(
+                initialValue: selectedGender,
+                decoration: const InputDecoration(
+                  labelText: 'Gender',
+                  prefixIcon: Icon(Icons.person_search_outlined),
+                ),
+                items: const ['Male', 'Female', 'Other', 'Prefer not to say']
+                    .map(
+                      (value) =>
+                          DropdownMenuItem(value: value, child: Text(value)),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => selectedGender = value),
               ),
               const SizedBox(height: 28),
 
@@ -184,6 +308,22 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
                 text: 'Save & Continue to Device Setup',
                 loading: widget.controller.loading,
                 onPressed: _onSaveAndContinue,
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: widget.controller.loading
+                    ? null
+                    : _onCancelAccountCreation,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Cancel account creation'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.dangerDark,
+                  minimumSize: const Size.fromHeight(44),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
             ],

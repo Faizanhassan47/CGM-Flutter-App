@@ -27,11 +27,13 @@ class AppController extends ChangeNotifier {
   String progressText = '';
 
   // User Profile
-  String fullName = 'Visole Dev';
-  String userEmail = 'visoledev@gmail.com';
+  String fullName = '';
+  String userEmail = '';
   String phoneNumber = '';
   String dateOfBirth = '';
   String gender = '';
+  String authProvider = '';
+  bool hasPassword = false;
   String preferredGlucoseUnit = 'mg/dL';
   String language = AppConfig.defaultLanguage;
   String referralCode = '';
@@ -103,7 +105,7 @@ class AppController extends ChangeNotifier {
       await CgmSdk.init(
         config: const SdkConfig(
           logLevel: LogLevel.info,
-          foregroundNotice: 'Aima glucose monitoring is active',
+          foregroundNotice: 'Circle glucose monitoring is active',
           minBatteryMv: 2800,
           warmupMinutes: 120,
         ),
@@ -134,6 +136,8 @@ class AppController extends ChangeNotifier {
         phoneNumber = data['phoneNumber']?.toString() ?? phoneNumber;
         dateOfBirth = data['dateOfBirth']?.toString() ?? dateOfBirth;
         gender = data['gender']?.toString() ?? gender;
+        authProvider = data['authProvider']?.toString() ?? authProvider;
+        hasPassword = data['hasPassword'] == true;
         preferredGlucoseUnit =
             data['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
         language = data['language']?.toString() ?? language;
@@ -380,7 +384,11 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  Future<void> googleLogin({required String idToken, String? fullName}) async {
+  Future<void> googleLogin({
+    required String idToken,
+    String? fullName,
+    String? email,
+  }) async {
     await _run(() async {
       final res = await api.socialLogin(
         provider: 'Google',
@@ -391,8 +399,19 @@ class AppController extends ChangeNotifier {
       if (fullName != null && fullName.isNotEmpty) {
         this.fullName = fullName;
       }
+      if (email != null && email.isNotEmpty) {
+        userEmail = email;
+      }
       final userMap = res['user'];
       if (userMap is Map<String, dynamic>) {
+        final accountName = userMap['fullName']?.toString().trim();
+        final accountEmail = userMap['email']?.toString().trim();
+        if (accountName != null && accountName.isNotEmpty) {
+          this.fullName = accountName;
+        }
+        if (accountEmail != null && accountEmail.isNotEmpty) {
+          userEmail = accountEmail;
+        }
         final code = userMap['referralCode']?.toString().trim();
         if (code != null && code.isNotEmpty) {
           referralCode = code;
@@ -433,6 +452,8 @@ class AppController extends ChangeNotifier {
       authenticated = true;
       fullName = name;
       userEmail = email;
+      authProvider = 'Email';
+      hasPassword = true;
       phoneNumber = phone ?? '';
       dateOfBirth = dob ?? '';
       gender = selectedGender ?? '';
@@ -490,7 +511,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> changePassword(
-    String currentPassword,
+    String? currentPassword,
     String newPassword,
   ) async {
     await _run(() async {
@@ -498,6 +519,7 @@ class AppController extends ChangeNotifier {
         currentPassword: currentPassword,
         newPassword: newPassword,
       );
+      hasPassword = true;
     });
   }
 
@@ -663,7 +685,7 @@ class AppController extends ChangeNotifier {
         await CgmSdk.init(
           config: const SdkConfig(
             logLevel: LogLevel.info,
-            foregroundNotice: 'Aima glucose monitoring is active',
+            foregroundNotice: 'Circle glucose monitoring is active',
             minBatteryMv: 2800,
             warmupMinutes: 120,
           ),
@@ -688,7 +710,7 @@ class AppController extends ChangeNotifier {
         await CgmSdk.init(
           config: const SdkConfig(
             logLevel: LogLevel.info,
-            foregroundNotice: 'Aima glucose monitoring is active',
+            foregroundNotice: 'Circle glucose monitoring is active',
             minBatteryMv: 2800,
             warmupMinutes: 120,
           ),

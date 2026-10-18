@@ -33,6 +33,8 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
   bool obscureNew = true;
   bool obscureConfirm = true;
 
+  bool get requiresCurrentPassword => widget.controller.hasPassword;
+
   @override
   void dispose() {
     currentPwController.dispose();
@@ -42,11 +44,12 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
   }
 
   void _onChangePassword() async {
+    final isSettingFirstPassword = !requiresCurrentPassword;
     final current = currentPwController.text;
     final next = newPwController.text;
     final confirm = confirmPwController.text;
 
-    if (current.isEmpty || next.isEmpty) {
+    if ((requiresCurrentPassword && current.isEmpty) || next.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill out password fields.')),
       );
@@ -68,11 +71,20 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
     }
 
     try {
-      await widget.controller.changePassword(current, next);
+      await widget.controller.changePassword(
+        requiresCurrentPassword ? current : null,
+        next,
+      );
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password changed successfully!')),
+          SnackBar(
+            content: Text(
+              isSettingFirstPassword
+                  ? 'Password set successfully!'
+                  : 'Password changed successfully!',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -144,8 +156,8 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
+                  children: [
+                    const Text(
                       'Privacy & Security',
                       style: TextStyle(
                         fontSize: 22,
@@ -153,10 +165,15 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                         color: AppTheme.darkPurple,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      'Change your password or manage your\naccount.',
-                      style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                      requiresCurrentPassword
+                          ? 'Change your password or manage your\naccount.'
+                          : 'Set a password or manage your\naccount.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   ],
                 ),
@@ -183,9 +200,11 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Change password',
-                    style: TextStyle(
+                  Text(
+                    requiresCurrentPassword
+                        ? 'Change password'
+                        : 'Set password',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.darkPurple,
@@ -193,24 +212,26 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                   ),
                   const SizedBox(height: 18),
 
-                  CustomUnderlineField(
-                    controller: currentPwController,
-                    label: 'Current password',
-                    hintText: 'Enter current password',
-                    obscureText: obscureCurrent,
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscureCurrent
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                        color: AppTheme.primaryPurple,
-                        size: 20,
+                  if (requiresCurrentPassword) ...[
+                    CustomUnderlineField(
+                      controller: currentPwController,
+                      label: 'Current password',
+                      hintText: 'Enter current password',
+                      obscureText: obscureCurrent,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscureCurrent
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          color: AppTheme.primaryPurple,
+                          size: 20,
+                        ),
+                        onPressed: () =>
+                            setState(() => obscureCurrent = !obscureCurrent),
                       ),
-                      onPressed: () =>
-                          setState(() => obscureCurrent = !obscureCurrent),
                     ),
-                  ),
-                  const SizedBox(height: 18),
+                    const SizedBox(height: 18),
+                  ],
 
                   CustomUnderlineField(
                     controller: newPwController,
@@ -250,7 +271,9 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                   const SizedBox(height: 24),
 
                   PillButton(
-                    text: 'Change Password',
+                    text: requiresCurrentPassword
+                        ? 'Change Password'
+                        : 'Set Password',
                     loading: widget.controller.loading,
                     onPressed: _onChangePassword,
                   ),

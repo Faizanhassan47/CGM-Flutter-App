@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../core/app_theme.dart';
 
 class BrandHeader extends StatelessWidget {
@@ -11,9 +10,13 @@ class BrandHeader extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SvgPicture.asset('assets/images/logo.svg', width: 82, height: 82),
+        Image.asset(
+          'assets/images/circle_logo.png',
+          width: 300,
+          fit: BoxFit.contain,
+          semanticLabel: 'Circle Continuous Glucose Monitoring',
+        ),
         const SizedBox(height: AppSpacing.md),
-        const Text('Aima', style: AppTextStyles.display),
         if (showSubtitle) ...[
           const SizedBox(height: AppSpacing.xs),
           const Text(

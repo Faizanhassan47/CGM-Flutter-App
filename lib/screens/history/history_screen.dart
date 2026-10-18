@@ -377,9 +377,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: const Color(
-                                    0xFF5E2B97,
-                                  ).withValues(alpha: 0.25),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.25,
+                                  ),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 ),
@@ -491,9 +491,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: const Color(
-                              0xFF00B4D8,
-                            ).withValues(alpha: 0.3),
+                            color: AppColors.primary.withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 3),
                           ),

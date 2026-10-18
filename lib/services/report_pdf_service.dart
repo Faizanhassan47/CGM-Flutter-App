@@ -49,7 +49,7 @@ class ReportPdfService {
     final stamp = DateFormat('yyyyMMdd').format(DateTime.now());
     await Printing.sharePdf(
       bytes: bytes,
-      filename: 'Aima_CGM_Report_$stamp.pdf',
+      filename: 'Circle_CGM_Report_$stamp.pdf',
     );
   }
 
@@ -69,7 +69,7 @@ class ReportPdfService {
     );
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => bytes,
-      name: 'Aima_CGM_Report',
+      name: 'Circle_CGM_Report',
     );
   }
 
@@ -81,15 +81,15 @@ class ReportPdfService {
     String? patientName,
   }) async {
     final document = pw.Document(
-      title: 'Aima Report',
-      author: 'Aima Health',
+      title: 'Circle Report',
+      author: 'Circle Health',
       subject: 'Continuous Glucose Monitoring Report & Analytics',
     );
 
-    const purple = PdfColor.fromInt(0xFF5E2B97);
-    const darkPurple = PdfColor.fromInt(0xFF221A3B);
-    const palePurple = PdfColor.fromInt(0xFFF7F5FC);
-    const border = PdfColor.fromInt(0xFFEFEBF6);
+    const brand = PdfColor.fromInt(0xFFFF5B49);
+    const darkText = PdfColor.fromInt(0xFF201C1B);
+    const brandSoft = PdfColor.fromInt(0xFFFFF2EF);
+    const border = PdfColor.fromInt(0xFFF0E3DF);
     const textMuted = PdfColor.fromInt(0xFF6F6A88);
     const greenPill = PdfColor.fromInt(0xFFDCFCE7);
     const greenText = PdfColor.fromInt(0xFF15803D);
@@ -105,14 +105,11 @@ class ReportPdfService {
     final lowEventsStr = (report['lowEvents']?.toString() ?? '12');
     final highEventsStr = (report['highEvents']?.toString() ?? '28');
 
-    // Official Aima SVG logo definition for vector PDF rendering
-    const String aimaSvg = '''
+    // Circle brand mark for vector PDF rendering.
+    const String circleSvg = '''
 <svg width="60" height="60" viewBox="0 0 512 512">
-  <g transform="translate(256, 256)">
-    <path d="M -100,150 L 0,-140 L 100,150" fill="none" stroke="#5E2B97" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M -60,40 L -25,40 L 0,-15 L 30,100 L 55,40 L 80,40" fill="none" stroke="#00B2E2" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M -190,0 A 190,190 0 1,1 190,0 A 190,190 0 0,1 -120,147" fill="none" stroke="#00B2E2" stroke-width="24" stroke-linecap="round" />
-  </g>
+  <path d="M256 56a200 200 0 1 0 0 400V276h180V236H276V56z" fill="#FF5B49" />
+  <path d="M256 56a200 200 0 0 1 180 180H256z" fill="#FF774A" />
 </svg>''';
 
     document.addPage(
@@ -138,16 +135,16 @@ class ReportPdfService {
                       border: pw.Border.all(color: border, width: 1.2),
                     ),
                     padding: const pw.EdgeInsets.all(3),
-                    child: pw.SvgImage(svg: aimaSvg),
+                    child: pw.SvgImage(svg: circleSvg),
                   ),
                   pw.SizedBox(width: 12),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        'Aima Report',
+                        'Circle Report',
                         style: pw.TextStyle(
-                          color: darkPurple,
+                          color: darkText,
                           fontSize: 18,
                           fontWeight: pw.FontWeight.bold,
                         ),
@@ -169,14 +166,14 @@ class ReportPdfService {
                   vertical: 4,
                 ),
                 decoration: pw.BoxDecoration(
-                  color: palePurple,
+                  color: brandSoft,
                   borderRadius: pw.BorderRadius.circular(12),
-                  border: pw.Border.all(color: purple, width: 0.8),
+                  border: pw.Border.all(color: brand, width: 0.8),
                 ),
                 child: pw.Text(
                   'CONFIDENTIAL MEDICAL REPORT',
                   style: pw.TextStyle(
-                    color: purple,
+                    color: brand,
                     fontSize: 8,
                     fontWeight: pw.FontWeight.bold,
                   ),
@@ -194,7 +191,7 @@ class ReportPdfService {
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text(
-                'Aima Health Continuous Glucose Monitoring  Generated on ${DateFormat('MMM d, yyyy h:mm a').format(DateTime.now())}',
+                'Circle Health Continuous Glucose Monitoring  Generated on ${DateFormat('MMM d, yyyy h:mm a').format(DateTime.now())}',
                 style: const pw.TextStyle(fontSize: 8, color: textMuted),
               ),
               pw.Text(
@@ -214,7 +211,7 @@ class ReportPdfService {
               vertical: 14,
             ),
             decoration: pw.BoxDecoration(
-              color: palePurple,
+              color: brandSoft,
               borderRadius: pw.BorderRadius.circular(12),
               border: pw.Border.all(color: border),
             ),
@@ -227,7 +224,7 @@ class ReportPdfService {
                     pw.Text(
                       '$daysCount Days Report',
                       style: pw.TextStyle(
-                        color: darkPurple,
+                        color: darkText,
                         fontSize: 16,
                         fontWeight: pw.FontWeight.bold,
                       ),
@@ -243,9 +240,9 @@ class ReportPdfService {
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
                     pw.Text(
-                      'Patient: ${patientName ?? 'Aima Patient'}',
+                      'Patient: ${patientName ?? 'Circle Patient'}',
                       style: pw.TextStyle(
-                        color: darkPurple,
+                        color: darkText,
                         fontSize: 11,
                         fontWeight: pw.FontWeight.bold,
                       ),
@@ -268,7 +265,7 @@ class ReportPdfService {
             style: pw.TextStyle(
               fontSize: 15,
               fontWeight: pw.FontWeight.bold,
-              color: darkPurple,
+              color: darkText,
             ),
           ),
           pw.SizedBox(height: 3),
@@ -285,28 +282,28 @@ class ReportPdfService {
                 title: 'Average Glucose',
                 value: avgGlucoseStr,
                 subText: 'mg/dL',
-                valueColor: darkPurple,
+                valueColor: darkText,
               ),
               pw.SizedBox(width: 8),
               _buildSummaryCard(
                 title: 'Time in Range',
                 value: tirStr,
                 subText: '90-130 mg/dL',
-                valueColor: darkPurple,
+                valueColor: darkText,
               ),
               pw.SizedBox(width: 8),
               _buildSummaryCard(
                 title: 'Estimated A1C',
                 value: a1cStr,
                 subText: '(eA1C)',
-                valueColor: darkPurple,
+                valueColor: darkText,
               ),
               pw.SizedBox(width: 8),
               _buildSummaryCard(
                 title: 'Low Events',
                 value: lowEventsStr,
                 subText: '< 90 mg/dL',
-                valueColor: const PdfColor.fromInt(0xFF0284C7),
+                valueColor: brand,
               ),
               pw.SizedBox(width: 8),
               _buildSummaryCard(
@@ -331,7 +328,7 @@ class ReportPdfService {
                     style: pw.TextStyle(
                       fontSize: 15,
                       fontWeight: pw.FontWeight.bold,
-                      color: darkPurple,
+                      color: darkText,
                     ),
                   ),
                   pw.SizedBox(height: 2),
@@ -347,12 +344,12 @@ class ReportPdfService {
                   vertical: 3,
                 ),
                 decoration: pw.BoxDecoration(
-                  color: palePurple,
+                  color: brandSoft,
                   borderRadius: pw.BorderRadius.circular(6),
                 ),
                 child: pw.Text(
                   'Values are averages',
-                  style: const pw.TextStyle(fontSize: 8, color: purple),
+                  style: const pw.TextStyle(fontSize: 8, color: brand),
                 ),
               ),
             ],
@@ -374,7 +371,7 @@ class ReportPdfService {
             children: [
               // Header Row
               pw.TableRow(
-                decoration: const pw.BoxDecoration(color: palePurple),
+                decoration: const pw.BoxDecoration(color: brandSoft),
                 children: [
                   _tableHeader('Period'),
                   _tableHeader('Avg Glucose\n(mg/dL)'),
@@ -409,7 +406,7 @@ class ReportPdfService {
                             style: pw.TextStyle(
                               fontSize: 8.5,
                               fontWeight: pw.FontWeight.bold,
-                              color: darkPurple,
+                              color: darkText,
                             ),
                           ),
                           pw.Text(
@@ -431,7 +428,7 @@ class ReportPdfService {
                           style: pw.TextStyle(
                             fontSize: 8.5,
                             fontWeight: pw.FontWeight.bold,
-                            color: darkPurple,
+                            color: darkText,
                           ),
                         ),
                       ),
@@ -469,7 +466,7 @@ class ReportPdfService {
                           style: pw.TextStyle(
                             fontSize: 8.5,
                             fontWeight: pw.FontWeight.bold,
-                            color: const PdfColor.fromInt(0xFF0284C7),
+                            color: brand,
                           ),
                         ),
                       ),
@@ -496,7 +493,7 @@ class ReportPdfService {
                           '${item.sensorUsage}%',
                           style: const pw.TextStyle(
                             fontSize: 8.5,
-                            color: darkPurple,
+                            color: darkText,
                           ),
                         ),
                       ),
@@ -594,7 +591,7 @@ class ReportPdfService {
           pw.Container(
             padding: const pw.EdgeInsets.all(10),
             decoration: pw.BoxDecoration(
-              color: palePurple,
+              color: brandSoft,
               borderRadius: pw.BorderRadius.circular(8),
             ),
             child: pw.Text(
@@ -622,7 +619,7 @@ class ReportPdfService {
           color: PdfColors.white,
           borderRadius: pw.BorderRadius.circular(10),
           border: pw.Border.all(
-            color: const PdfColor.fromInt(0xFFEFEBF6),
+            color: const PdfColor.fromInt(0xFFF0E3DF),
             width: 1,
           ),
         ),
@@ -668,7 +665,7 @@ class ReportPdfService {
         text,
         textAlign: pw.TextAlign.center,
         style: pw.TextStyle(
-          color: const PdfColor.fromInt(0xFF5E2B97),
+          color: const PdfColor.fromInt(0xFFFF5B49),
           fontSize: 7.5,
           fontWeight: pw.FontWeight.bold,
         ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Central design tokens for the Aima application.
+/// Central design tokens for the Circle application.
 ///
 /// Flutter does not use CSS. These constants are the native Flutter
 /// equivalent of CSS variables and reusable classes.
@@ -12,24 +12,24 @@ abstract final class AppColors {
   static const materialRed = Color(0xFFF44336);
   static const materialRedAccent = Color(0xFFFF5252);
 
-  static const primary = Color(0xFF523298);
-  static const primaryDark = Color(0xFF3F2177);
-  static const primarySoft = Color(0xFFF5F1FB);
-  static const primaryBorder = Color(0xFFE5DCF4);
+  static const primary = Color(0xFFFF5B49);
+  static const primaryDark = Color(0xFFD94735);
+  static const primarySoft = Color(0xFFFFF2EF);
+  static const primaryBorder = Color(0xFFFFC9C1);
 
-  static const accent = Color(0xFF00B2E2);
-  static const accentDark = Color(0xFF0284C7);
-  static const accentSoft = Color(0xFFE6F7FD);
-  static const accentBorder = Color(0xFFBCE8F9);
+  static const accent = Color(0xFFFF774A);
+  static const accentDark = Color(0xFFE85A35);
+  static const accentSoft = Color(0xFFFFF4EE);
+  static const accentBorder = Color(0xFFFFD5C2);
 
-  static const background = Color(0xFFF9F9FC);
+  static const background = Color(0xFFFCFBFA);
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceBorder = Color(0xFFEFEBF6);
+  static const surfaceBorder = Color(0xFFF0E3DF);
 
-  static const textPrimary = Color(0xFF221A3B);
-  static const textSecondary = Color(0xFF6F6A88);
-  static const textDisabled = Color(0xFFA5A1B8);
-  static const inputBorder = Color(0xFF8B88A0);
+  static const textPrimary = Color(0xFF201C1B);
+  static const textSecondary = Color(0xFF746B68);
+  static const textDisabled = Color(0xFFAAA19E);
+  static const inputBorder = Color(0xFF918986);
 
   static const success = Color(0xFF22C55E);
   static const successDark = Color(0xFF15803D);
@@ -40,115 +40,117 @@ abstract final class AppColors {
   static const dangerSoft = Color(0xFFFEE2E2);
 }
 
-/// Complete app palette. Generated from colors used by Flutter screens.
+/// Complete app palette. Legacy identifiers are retained temporarily for API
+/// compatibility, but all former purple/cyan brand values resolve to Circle's
+/// coral and warm-neutral design system.
 abstract final class AppPalette {
-  static const hexFF0077B6 = Color(0XFF0077B6);
+  static const hexFF0077B6 = AppColors.primaryDark;
   static const hexFF007A5A = Color(0XFF007A5A);
-  static const hexFF0096C7 = Color(0XFF0096C7);
-  static const hexFF00B0FF = Color(0XFF00B0FF);
-  static const hexFF00B2E2 = Color(0XFF00B2E2);
-  static const hexFF00B4D8 = Color(0XFF00B4D8);
+  static const hexFF0096C7 = AppColors.primary;
+  static const hexFF00B0FF = AppColors.accent;
+  static const hexFF00B2E2 = AppColors.primary;
+  static const hexFF00B4D8 = AppColors.primary;
   static const hexFF00B894 = Color(0XFF00B894);
-  static const hexFF00BCD4 = Color(0XFF00BCD4);
-  static const hexFF0284C7 = Color(0XFF0284C7);
-  static const hexFF0288D1 = Color(0XFF0288D1);
-  static const hexFF0369A1 = Color(0XFF0369A1);
+  static const hexFF00BCD4 = AppColors.accent;
+  static const hexFF0284C7 = AppColors.accentDark;
+  static const hexFF0288D1 = AppColors.primaryDark;
+  static const hexFF0369A1 = AppColors.primaryDark;
   static const hexFF10B981 = Color(0XFF10B981);
   static const hexFF15803D = Color(0XFF15803D);
   static const hexFF16A34A = Color(0XFF16A34A);
   static const hexFF22C55E = Color(0XFF22C55E);
-  static const hexFF2E1A47 = Color(0XFF2E1A47);
-  static const hexFF3498DB = Color(0XFF3498DB);
-  static const hexFF3B2A68 = Color(0XFF3B2A68);
-  static const hexFF3C096C = Color(0XFF3C096C);
-  static const hexFF4A148C = Color(0XFF4A148C);
-  static const hexFF4A3E5C = Color(0XFF4A3E5C);
+  static const hexFF2E1A47 = AppColors.textPrimary;
+  static const hexFF3498DB = AppColors.primary;
+  static const hexFF3B2A68 = AppColors.textPrimary;
+  static const hexFF3C096C = AppColors.dangerDark;
+  static const hexFF4A148C = AppColors.primaryDark;
+  static const hexFF4A3E5C = AppColors.textSecondary;
   static const hexFF4ADE80 = Color(0XFF4ADE80);
-  static const hexFF512DA8 = Color(0XFF512DA8);
+  static const hexFF512DA8 = AppColors.primaryDark;
   static const hexFF57CC99 = Color(0XFF57CC99);
-  static const hexFF5B21B6 = Color(0XFF5B21B6);
-  static const hexFF5E2B97 = Color(0XFF5E2B97);
-  static const hexFF5E35B1 = Color(0XFF5E35B1);
-  static const hexFF673AB7 = Color(0XFF673AB7);
-  static const hexFF7B2CBF = Color(0XFF7B2CBF);
-  static const hexFF7E57C2 = Color(0XFF7E57C2);
-  static const hexFF7E6E91 = Color(0XFF7E6E91);
-  static const hexFF7E72A2 = Color(0XFF7E72A2);
-  static const hexFF80DEEA = Color(0XFF80DEEA);
-  static const hexFF8A7D9D = Color(0XFF8A7D9D);
-  static const hexFF8B5CF6 = Color(0XFF8B5CF6);
-  static const hexFF8E44AD = Color(0XFF8E44AD);
-  static const hexFF8F8CA3 = Color(0XFF8F8CA3);
+  static const hexFF5B21B6 = AppColors.primaryDark;
+  static const hexFF5E2B97 = AppColors.primaryDark;
+  static const hexFF5E35B1 = AppColors.primary;
+  static const hexFF673AB7 = AppColors.primary;
+  static const hexFF7B2CBF = AppColors.warning;
+  static const hexFF7E57C2 = AppColors.accent;
+  static const hexFF7E6E91 = AppColors.textSecondary;
+  static const hexFF7E72A2 = AppColors.textSecondary;
+  static const hexFF80DEEA = AppColors.primaryBorder;
+  static const hexFF8A7D9D = AppColors.textSecondary;
+  static const hexFF8B5CF6 = AppColors.accent;
+  static const hexFF8E44AD = AppColors.primaryDark;
+  static const hexFF8F8CA3 = AppColors.textSecondary;
   static const hexFF92400E = Color(0XFF92400E);
-  static const hexFF9C27B0 = Color(0XFF9C27B0);
-  static const hexFFA0AEC0 = Color(0XFFA0AEC0);
-  static const hexFFABA7BE = Color(0XFFABA7BE);
-  static const hexFFB39DDB = Color(0XFFB39DDB);
-  static const hexFFB3E5FC = Color(0XFFB3E5FC);
+  static const hexFF9C27B0 = AppColors.primaryDark;
+  static const hexFFA0AEC0 = AppColors.textDisabled;
+  static const hexFFABA7BE = AppColors.textDisabled;
+  static const hexFFB39DDB = AppColors.primaryBorder;
+  static const hexFFB3E5FC = AppColors.primaryBorder;
   static const hexFFB45309 = Color(0XFFB45309);
-  static const hexFFBAE6FD = Color(0XFFBAE6FD);
+  static const hexFFBAE6FD = AppColors.primaryBorder;
   static const hexFFC7F9CC = Color(0XFFC7F9CC);
-  static const hexFFCCC8DC = Color(0XFFCCC8DC);
-  static const hexFFCDC6E2 = Color(0XFFCDC6E2);
-  static const hexFFD1C4E9 = Color(0XFFD1C4E9);
+  static const hexFFCCC8DC = AppColors.inputBorder;
+  static const hexFFCDC6E2 = AppColors.primaryBorder;
+  static const hexFFD1C4E9 = AppColors.primaryBorder;
   static const hexFFD1FAE5 = Color(0XFFD1FAE5);
   static const hexFFD35400 = Color(0XFFD35400);
-  static const hexFFD3CCE8 = Color(0XFFD3CCE8);
+  static const hexFFD3CCE8 = AppColors.primaryBorder;
   static const hexFFD63031 = Color(0XFFD63031);
-  static const hexFFD6D1E8 = Color(0XFFD6D1E8);
+  static const hexFFD6D1E8 = AppColors.surfaceBorder;
   static const hexFFD97706 = Color(0XFFD97706);
   static const hexFFDC2626 = Color(0XFFDC2626);
   static const hexFFDCFCE7 = Color(0XFFDCFCE7);
-  static const hexFFDDD2F0 = Color(0XFFDDD2F0);
-  static const hexFFDDD8EC = Color(0XFFDDD8EC);
-  static const hexFFE0F2FE = Color(0XFFE0F2FE);
-  static const hexFFE0F7FD = Color(0XFFE0F7FD);
+  static const hexFFDDD2F0 = AppColors.primaryBorder;
+  static const hexFFDDD8EC = AppColors.surfaceBorder;
+  static const hexFFE0F2FE = AppColors.primarySoft;
+  static const hexFFE0F7FD = AppColors.primarySoft;
   static const hexFFE11D48 = Color(0XFFE11D48);
-  static const hexFFE1F5FE = Color(0XFFE1F5FE);
-  static const hexFFE2D9F3 = Color(0XFFE2D9F3);
-  static const hexFFE5DCF4 = Color(0XFFE5DCF4);
+  static const hexFFE1F5FE = AppColors.primarySoft;
+  static const hexFFE2D9F3 = AppColors.primaryBorder;
+  static const hexFFE5DCF4 = AppColors.primaryBorder;
   static const hexFFE67E22 = Color(0XFFE67E22);
   static const hexFFE6F9EE = Color(0XFFE6F9EE);
   static const hexFFE74C3C = Color(0XFFE74C3C);
   static const hexFFE8F5E9 = Color(0XFFE8F5E9);
   static const hexFFE8F8F0 = Color(0XFFE8F8F0);
   static const hexFFEAB308 = Color(0XFFEAB308);
-  static const hexFFEADBFA = Color(0XFFEADBFA);
-  static const hexFFECE6F5 = Color(0XFFECE6F5);
-  static const hexFFECEAF4 = Color(0XFFECEAF4);
-  static const hexFFEDE7F6 = Color(0XFFEDE7F6);
+  static const hexFFEADBFA = AppColors.primarySoft;
+  static const hexFFECE6F5 = AppColors.primarySoft;
+  static const hexFFECEAF4 = AppColors.surfaceBorder;
+  static const hexFFEDE7F6 = AppColors.primarySoft;
   static const hexFFEF4444 = Color(0XFFEF4444);
-  static const hexFFEFEBF6 = Color(0XFFEFEBF6);
-  static const hexFFF0ECF8 = Color(0XFFF0ECF8);
-  static const hexFFF0F7FF = Color(0XFFF0F7FF);
-  static const hexFFF0F9FF = Color(0XFFF0F9FF);
+  static const hexFFEFEBF6 = AppColors.surfaceBorder;
+  static const hexFFF0ECF8 = AppColors.primarySoft;
+  static const hexFFF0F7FF = AppColors.primarySoft;
+  static const hexFFF0F9FF = AppColors.primarySoft;
   static const hexFFF0FDF4 = Color(0XFFF0FDF4);
-  static const hexFFF1EEF6 = Color(0XFFF1EEF6);
+  static const hexFFF1EEF6 = AppColors.primarySoft;
   static const hexFFF1FBF4 = Color(0XFFF1FBF4);
-  static const hexFFF2EEF8 = Color(0XFFF2EEF8);
-  static const hexFFF2EEF9 = Color(0XFFF2EEF9);
+  static const hexFFF2EEF8 = AppColors.primarySoft;
+  static const hexFFF2EEF9 = AppColors.primarySoft;
   static const hexFFF39C12 = Color(0XFFF39C12);
-  static const hexFFF3E8FF = Color(0XFFF3E8FF);
-  static const hexFFF3EDF9 = Color(0XFFF3EDF9);
-  static const hexFFF3F7FF = Color(0XFFF3F7FF);
-  static const hexFFF4ECF7 = Color(0XFFF4ECF7);
-  static const hexFFF4EFF8 = Color(0XFFF4EFF8);
+  static const hexFFF3E8FF = AppColors.primarySoft;
+  static const hexFFF3EDF9 = AppColors.primarySoft;
+  static const hexFFF3F7FF = AppColors.primarySoft;
+  static const hexFFF4ECF7 = AppColors.primarySoft;
+  static const hexFFF4EFF8 = AppColors.primarySoft;
   static const hexFFF59E0B = Color(0XFFF59E0B);
-  static const hexFFF5F3FB = Color(0XFFF5F3FB);
-  static const hexFFF6F3FA = Color(0XFFF6F3FA);
-  static const hexFFF6F3FB = Color(0XFFF6F3FB);
-  static const hexFFF7F4FB = Color(0XFFF7F4FB);
-  static const hexFFF7F5FC = Color(0XFFF7F5FC);
-  static const hexFFF7F6FB = Color(0XFFF7F6FB);
-  static const hexFFF8F9FE = Color(0XFFF8F9FE);
+  static const hexFFF5F3FB = AppColors.primarySoft;
+  static const hexFFF6F3FA = AppColors.primarySoft;
+  static const hexFFF6F3FB = AppColors.primarySoft;
+  static const hexFFF7F4FB = AppColors.background;
+  static const hexFFF7F5FC = AppColors.background;
+  static const hexFFF7F6FB = AppColors.background;
+  static const hexFFF8F9FE = AppColors.background;
   static const hexFFF97316 = Color(0XFFF97316);
-  static const hexFFF9F7FC = Color(0XFFF9F7FC);
-  static const hexFFF9F9FC = Color(0XFFF9F9FC);
+  static const hexFFF9F7FC = AppColors.background;
+  static const hexFFF9F9FC = AppColors.background;
   static const hexFFFADBD8 = Color(0XFFFADBD8);
-  static const hexFFFAF8FE = Color(0XFFFAF8FE);
+  static const hexFFFAF8FE = AppColors.background;
   static const hexFFFBD0D0 = Color(0XFFFBD0D0);
-  static const hexFFFBF9FD = Color(0XFFFBF9FD);
-  static const hexFFFBFBFE = Color(0XFFFBFBFE);
+  static const hexFFFBF9FD = AppColors.background;
+  static const hexFFFBFBFE = AppColors.background;
   static const hexFFFDEBD0 = Color(0XFFFDEBD0);
   static const hexFFFDF2E9 = Color(0XFFFDF2E9);
   static const hexFFFEE2E2 = Color(0XFFFEE2E2);
@@ -286,11 +288,11 @@ abstract final class AppTextStyles {
 
 abstract final class AppShadows {
   static const card = <BoxShadow>[
-    BoxShadow(color: Color(0x0F221A3B), blurRadius: 16, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x0F201C1B), blurRadius: 16, offset: Offset(0, 6)),
   ];
 
   static const primary = <BoxShadow>[
-    BoxShadow(color: Color(0x3D523298), blurRadius: 18, offset: Offset(0, 8)),
+    BoxShadow(color: Color(0x3DFF5B49), blurRadius: 18, offset: Offset(0, 8)),
   ];
 }
 

@@ -128,6 +128,7 @@ class _SignupScreenState extends State<SignupScreen> {
       await widget.controller.googleLogin(
         idToken: idToken,
         fullName: account.displayName,
+        email: account.email,
       );
       if (mounted && widget.controller.authenticated) {
         Navigator.of(context).popUntil((route) => route.isFirst);

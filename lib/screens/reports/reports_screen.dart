@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import '../../core/app_theme.dart';
@@ -158,18 +157,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final rangeEnd = _endDate.add(const Duration(days: 1));
       final dailyMap = <String, List<double>>{};
       for (final s in widget.controller.history) {
-        if (s.value == null || s.warmup || s.abnormal) continue;
-        if (s.measuredAt.isBefore(rangeStart) || s.measuredAt.isAfter(rangeEnd)) continue;
+        if (s.value == null || s.warmup || s.abnormal) {
+          continue;
+        }
+        if (s.measuredAt.isBefore(rangeStart) ||
+            s.measuredAt.isAfter(rangeEnd)) {
+          continue;
+        }
         final dateKey = DateFormat('yyyy-MM-dd').format(s.measuredAt);
         dailyMap.putIfAbsent(dateKey, () => []).add(s.value! * 18.0182);
       }
-      final sortedDates = dailyMap.keys.toList()..sort((a, b) => b.compareTo(a));
+      final sortedDates = dailyMap.keys.toList()
+        ..sort((a, b) => b.compareTo(a));
       for (final dStr in sortedDates) {
         final dateParsed = DateTime.tryParse(dStr) ?? DateTime.now();
         final vals = dailyMap[dStr]!;
         if (vals.isEmpty) continue;
         final avg = (vals.reduce((a, b) => a + b) / vals.length).round();
-        final inTir = vals.where((v) => v >= widget.controller.targetLow && v <= widget.controller.targetHigh).length;
+        final inTir = vals
+            .where(
+              (v) =>
+                  v >= widget.controller.targetLow &&
+                  v <= widget.controller.targetHigh,
+            )
+            .length;
         final tir = ((inTir / vals.length) * 100).round();
         final low = vals.where((v) => v < widget.controller.targetLow).length;
         final high = vals.where((v) => v > widget.controller.targetHigh).length;
@@ -201,7 +212,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       final breakdown = _getBreakdownItems();
       final patientName = widget.controller.fullName.trim().isNotEmpty
           ? widget.controller.fullName.trim()
-          : 'Aima Patient';
+          : 'Circle Patient';
 
       if (_selectedFormat == 'CSV') {
         // Build true CSV representation of patient report readings
@@ -224,7 +235,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final bytes = Uint8List.fromList(csvBuffer.toString().codeUnits);
         await Printing.sharePdf(
           bytes: bytes,
-          filename: 'Aima_CGM_Report_$stamp.csv',
+          filename: 'Circle_CGM_Report_$stamp.csv',
         );
       } else {
         // PDF or Share
@@ -269,7 +280,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final rangeEnd = _endDate.add(const Duration(days: 1));
     final filteredHistory = widget.controller.history.where((s) {
       if (s.value == null || s.warmup || s.abnormal) return false;
-      return s.measuredAt.isAfter(rangeStart) && s.measuredAt.isBefore(rangeEnd);
+      return s.measuredAt.isAfter(rangeStart) &&
+          s.measuredAt.isBefore(rangeEnd);
     }).toList();
 
     final backendReadings = (report['totalReadings'] as num? ?? 0);
@@ -279,7 +291,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (backendReadings > 0 && report['avgGlucose'] != null) {
       avgGlucose = report['avgGlucose'].toString().replaceAll(' mg/dL', '');
     } else if (filteredHistory.isNotEmpty) {
-      final sum = filteredHistory.fold<double>(0.0, (acc, s) => acc + (s.value! * 18.0182));
+      final sum = filteredHistory.fold<double>(
+        0.0,
+        (acc, s) => acc + (s.value! * 18.0182),
+      );
       avgGlucose = (sum / filteredHistory.length).round().toString();
     }
 
@@ -290,7 +305,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     } else if (filteredHistory.isNotEmpty) {
       final inTir = filteredHistory.where((s) {
         final mg = s.value! * 18.0182;
-        return mg >= widget.controller.targetLow && mg <= widget.controller.targetHigh;
+        return mg >= widget.controller.targetLow &&
+            mg <= widget.controller.targetHigh;
       }).length;
       tir = ((inTir / filteredHistory.length) * 100).round().toString();
     }
@@ -429,7 +445,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _buildTopHeader(BuildContext context) {
     return Row(
       children: [
-        // Aima Logo Circle
+        // Circle logo
         Container(
           width: 44,
           height: 44,
@@ -446,9 +462,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ],
           ),
           padding: AppInsets.all5,
-          child: SvgPicture.asset(
-            'assets/images/logo.svg',
-            semanticsLabel: 'Aima Logo',
+          child: Image.asset(
+            'assets/images/circle_mark.png',
+            semanticLabel: 'Circle Logo',
           ),
         ),
         const SizedBox(width: 14),

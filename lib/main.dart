@@ -58,17 +58,17 @@ void main() {
     );
   };
 
-  runApp(const AimaApp());
+  runApp(const CircleApp());
 }
 
-class AimaApp extends StatefulWidget {
-  const AimaApp({super.key});
+class CircleApp extends StatefulWidget {
+  const CircleApp({super.key});
 
   @override
-  State<AimaApp> createState() => _AimaAppState();
+  State<CircleApp> createState() => _CircleAppState();
 }
 
-class _AimaAppState extends State<AimaApp> {
+class _CircleAppState extends State<CircleApp> {
   late final AppController controller = AppController(ApiService());
 
   @override
@@ -80,7 +80,7 @@ class _AimaAppState extends State<AimaApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Aima',
+      title: 'Circle',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.themeData,
       home: AnimatedBuilder(

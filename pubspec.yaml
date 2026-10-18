@@ -1,5 +1,5 @@
 name: aima_cgm
-description: "Aima CGM Flutter application and SDK integration example."
+description: "Circle CGM Flutter application and SDK integration example."
 publish_to: none
 version: 4.0.0
 
@@ -36,6 +36,13 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/circle_mark.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/circle_mark.png
 
 flutter:
   uses-material-design: true

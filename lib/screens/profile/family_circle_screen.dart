@@ -726,7 +726,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
     }
     if (inviteCode.isEmpty) {
       inviteCode =
-          'AIMA-${widget.controller.userEmail.split('@').first.toUpperCase()}';
+          'CIRCLE-${widget.controller.userEmail.split('@').first.toUpperCase()}';
     }
 
     final currentUserEmail = widget.controller.userEmail.trim().toLowerCase();
