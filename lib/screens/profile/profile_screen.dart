@@ -18,32 +18,44 @@ class ProfileScreen extends StatelessWidget {
     final statusText = isConnected ? 'Connected' : 'Disconnected';
 
     // Dynamic Sensor & Device info
-    final deviceModel = controller.activeDevice?['deviceModel']?.toString() ??
+    final deviceModel =
+        controller.activeDevice?['deviceModel']?.toString() ??
         (controller.wear?.form == 'half' ? 'G-B' : 'G-AA');
-    final deviceName = controller.activeDevice?['deviceName']?.toString() ??
-        (controller.activeDevice?['bleDeviceName']?.toString().isNotEmpty == true
+    final deviceName =
+        controller.activeDevice?['deviceName']?.toString() ??
+        (controller.activeDevice?['bleDeviceName']?.toString().isNotEmpty ==
+                true
             ? controller.activeDevice!['bleDeviceName']
-            : (controller.wear?.deviceId != null ? 'CxM ${controller.wear!.deviceId}' : 'CxM Monitor'));
-    final serialNumber = controller.activeDevice?['serialNumber']?.toString() ??
+            : (controller.wear?.deviceId != null
+                  ? 'CxM ${controller.wear!.deviceId}'
+                  : 'Circle CGM'));
+    final serialNumber =
+        controller.activeDevice?['serialNumber']?.toString() ??
         controller.wear?.transmitterSn ??
         controller.wear?.sensorSn ??
         controller.wear?.deviceId ??
         controller.activeSensor?['sensorIdentifier']?.toString() ??
         '--';
-    final firmware = controller.activeDevice?['firmwareVersion']?.toString() ?? 'A100';
+    final firmware =
+        controller.activeDevice?['firmwareVersion']?.toString() ?? 'A100';
 
     // Sensor days calculations
     int remainingDays = 14;
     int dayPassed = 1;
-    if (controller.deviceStatus?.remainingDays != null && controller.deviceStatus!.remainingDays > 0) {
+    if (controller.deviceStatus?.remainingDays != null &&
+        controller.deviceStatus!.remainingDays > 0) {
       remainingDays = controller.deviceStatus!.remainingDays;
       dayPassed = (14 - remainingDays).clamp(1, 14);
     } else if (controller.wear?.activatedAt != null) {
-      final daysDiff = DateTime.now().difference(controller.wear!.activatedAt).inDays;
+      final daysDiff = DateTime.now()
+          .difference(controller.wear!.activatedAt)
+          .inDays;
       dayPassed = (daysDiff + 1).clamp(1, 14);
       remainingDays = (14 - dayPassed).clamp(0, 14);
     } else if (controller.activeSensor?['startedAt'] != null) {
-      final started = DateTime.tryParse(controller.activeSensor!['startedAt'].toString());
+      final started = DateTime.tryParse(
+        controller.activeSensor!['startedAt'].toString(),
+      );
       if (started != null) {
         final daysDiff = DateTime.now().difference(started).inDays;
         dayPassed = (daysDiff + 1).clamp(1, 14);
@@ -53,14 +65,23 @@ class ProfileScreen extends StatelessWidget {
     final wearRatio = (dayPassed / 14).clamp(0.0, 1.0);
 
     // Battery calculations
-    final batteryMv = controller.deviceStatus?.batteryMv ??
+    final batteryMv =
+        controller.deviceStatus?.batteryMv ??
         (controller.activeDevice?['batteryVoltageMv'] != null
-            ? int.tryParse(controller.activeDevice!['batteryVoltageMv'].toString())
+            ? int.tryParse(
+                controller.activeDevice!['batteryVoltageMv'].toString(),
+              )
             : 3000);
     final batteryPct = controller.activeDevice?['batteryPercentage'] != null
         ? (controller.activeDevice!['batteryPercentage'] as num).toInt()
-        : (batteryMv != null ? (((batteryMv - 2600) / (3000 - 2600)) * 100).clamp(0, 100).round() : 95);
-    final batteryDisplay = batteryMv != null ? '$batteryMv mV ($batteryPct%)' : '$batteryPct%';
+        : (batteryMv != null
+              ? (((batteryMv - 2600) / (3000 - 2600)) * 100)
+                    .clamp(0, 100)
+                    .round()
+              : 95);
+    final batteryDisplay = batteryMv != null
+        ? '$batteryMv mV ($batteryPct%)'
+        : '$batteryPct%';
     final batteryRatio = (batteryPct / 100.0).clamp(0.0, 1.0);
 
     // Temperature calculations
@@ -394,7 +415,8 @@ class ProfileScreen extends StatelessWidget {
                             icon: Icons.access_time_filled_rounded,
                             iconColor: AppTheme.primaryPurple,
                             label: 'Sensor Wear',
-                            value: 'Day $dayPassed of 14 • $remainingDays days left',
+                            value:
+                                'Day $dayPassed of 14 • $remainingDays days left',
                             hasProgressBar: true,
                             progressRatio: wearRatio,
                             progressColor: AppTheme.primaryPurple,

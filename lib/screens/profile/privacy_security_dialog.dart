@@ -32,6 +32,9 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
   bool obscureCurrent = true;
   bool obscureNew = true;
   bool obscureConfirm = true;
+  String? currentPasswordError;
+  String? newPasswordError;
+  String? confirmPasswordError;
 
   bool get requiresCurrentPassword => widget.controller.hasPassword;
 
@@ -49,24 +52,27 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
     final next = newPwController.text;
     final confirm = confirmPwController.text;
 
-    if ((requiresCurrentPassword && current.isEmpty) || next.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill out password fields.')),
-      );
-      return;
-    }
-    if (next.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New password must be at least 6 characters.'),
-        ),
-      );
-      return;
-    }
-    if (next != confirm) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('New passwords do not match.')),
-      );
+    final currentError = requiresCurrentPassword && current.isEmpty
+        ? 'Enter your current password.'
+        : null;
+    final newError = next.isEmpty
+        ? 'Enter a new password.'
+        : next.length < 6
+        ? 'Password must contain at least 6 characters.'
+        : null;
+    final confirmError = confirm.isEmpty
+        ? 'Confirm your new password.'
+        : next != confirm
+        ? 'Passwords do not match.'
+        : null;
+
+    setState(() {
+      currentPasswordError = currentError;
+      newPasswordError = newError;
+      confirmPasswordError = confirmError;
+    });
+
+    if (currentError != null || newError != null || confirmError != null) {
       return;
     }
 
@@ -89,9 +95,15 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
       }
     } catch (e) {
       if (!mounted) return;
+      final message = e.toString();
+      if (requiresCurrentPassword &&
+          message.toLowerCase().contains('current password')) {
+        setState(() => currentPasswordError = message);
+        return;
+      }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ).showSnackBar(SnackBar(content: Text('Failed: $message')));
     }
   }
 
@@ -218,6 +230,12 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                       label: 'Current password',
                       hintText: 'Enter current password',
                       obscureText: obscureCurrent,
+                      errorText: currentPasswordError,
+                      onChanged: (_) {
+                        if (currentPasswordError != null) {
+                          setState(() => currentPasswordError = null);
+                        }
+                      },
                       suffixIcon: IconButton(
                         icon: Icon(
                           obscureCurrent
@@ -238,6 +256,16 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                     label: 'New password',
                     hintText: 'At least 6 characters',
                     obscureText: obscureNew,
+                    errorText: newPasswordError,
+                    onChanged: (_) {
+                      if (newPasswordError != null ||
+                          confirmPasswordError != null) {
+                        setState(() {
+                          newPasswordError = null;
+                          confirmPasswordError = null;
+                        });
+                      }
+                    },
                     suffixIcon: IconButton(
                       icon: Icon(
                         obscureNew
@@ -256,6 +284,12 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                     label: 'Confirm new password',
                     hintText: 'Enter new password again',
                     obscureText: obscureConfirm,
+                    errorText: confirmPasswordError,
+                    onChanged: (_) {
+                      if (confirmPasswordError != null) {
+                        setState(() => confirmPasswordError = null);
+                      }
+                    },
                     suffixIcon: IconButton(
                       icon: Icon(
                         obscureConfirm

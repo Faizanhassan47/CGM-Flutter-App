@@ -14,6 +14,7 @@ class CustomUnderlineField extends StatelessWidget {
     this.onChanged,
     this.readOnly = false,
     this.onTap,
+    this.errorText,
   });
 
   final TextEditingController controller;
@@ -26,6 +27,7 @@ class CustomUnderlineField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final bool readOnly;
   final VoidCallback? onTap;
+  final String? errorText;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +49,8 @@ class CustomUnderlineField extends StatelessWidget {
           decoration: InputDecoration(
             isDense: true,
             hintText: hintText,
+            errorText: errorText,
+            errorMaxLines: 2,
             hintStyle: AppTextStyles.body.copyWith(
               color: AppColors.textDisabled,
               fontWeight: FontWeight.w400,

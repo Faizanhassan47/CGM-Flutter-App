@@ -14,24 +14,34 @@ class LinkedDeviceScreen extends StatelessWidget {
     final isConnected = controller.connection == CgmConnectionState.connected;
 
     // Dynamic Sensor & Device info
-    final deviceModel = controller.activeDevice?['deviceModel']?.toString() ??
+    final deviceModel =
+        controller.activeDevice?['deviceModel']?.toString() ??
         (controller.wear?.form == 'half' ? 'G-B' : 'G-AA');
-    final deviceName = controller.activeDevice?['deviceName']?.toString() ??
-        (controller.activeDevice?['bleDeviceName']?.toString().isNotEmpty == true
+    final deviceName =
+        controller.activeDevice?['deviceName']?.toString() ??
+        (controller.activeDevice?['bleDeviceName']?.toString().isNotEmpty ==
+                true
             ? controller.activeDevice!['bleDeviceName']
-            : (controller.wear?.deviceId != null ? 'CxM ${controller.wear!.deviceId}' : 'CxM Monitor'));
-    final serialNumber = controller.activeDevice?['serialNumber']?.toString() ??
+            : (controller.wear?.deviceId != null
+                  ? 'CxM ${controller.wear!.deviceId}'
+                  : 'Circle CGM'));
+    final serialNumber =
+        controller.activeDevice?['serialNumber']?.toString() ??
         controller.wear?.transmitterSn ??
         controller.wear?.sensorSn ??
         controller.wear?.deviceId ??
         controller.activeSensor?['sensorIdentifier']?.toString() ??
         '--';
-    final firmware = controller.activeDevice?['firmwareVersion']?.toString() ?? 'A100';
+    final firmware =
+        controller.activeDevice?['firmwareVersion']?.toString() ?? 'A100';
 
     // Battery & Temperature
-    final batteryMv = controller.deviceStatus?.batteryMv ??
+    final batteryMv =
+        controller.deviceStatus?.batteryMv ??
         (controller.activeDevice?['batteryVoltageMv'] != null
-            ? int.tryParse(controller.activeDevice!['batteryVoltageMv'].toString())
+            ? int.tryParse(
+                controller.activeDevice!['batteryVoltageMv'].toString(),
+              )
             : 3000);
     final tempVal = controller.deviceStatus?.temperature ?? 32.5;
 
@@ -92,11 +102,17 @@ class LinkedDeviceScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
 
-                _buildBullet('Battery Voltage: ${batteryMv ?? 3000} mV (${batteryMv != null && batteryMv < 2700 ? "Low" : "Good"})'),
+                _buildBullet(
+                  'Battery Voltage: ${batteryMv ?? 3000} mV (${batteryMv != null && batteryMv < 2700 ? "Low" : "Good"})',
+                ),
                 const SizedBox(height: 8),
-                _buildBullet('Sensor Temperature: ${tempVal.toStringAsFixed(1)} °C'),
+                _buildBullet(
+                  'Sensor Temperature: ${tempVal.toStringAsFixed(1)} °C',
+                ),
                 const SizedBox(height: 8),
-                _buildBullet('Baseline Protocol: Verified (E7, E8, E1, E2, E3)'),
+                _buildBullet(
+                  'Baseline Protocol: Verified (E7, E8, E1, E2, E3)',
+                ),
                 const SizedBox(height: 8),
                 _buildBullet('GATT Services: FFF0 / FFF1 / FFF2'),
               ] else ...[
@@ -109,12 +125,19 @@ class LinkedDeviceScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: const [
-                      Icon(Icons.sensors_off_rounded, color: AppTheme.textMuted, size: 22),
+                      Icon(
+                        Icons.sensors_off_rounded,
+                        color: AppTheme.textMuted,
+                        size: 22,
+                      ),
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'Sensor is currently disconnected. Live diagnostics will appear once reconnected.',
-                          style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textMuted,
+                          ),
                         ),
                       ),
                     ],
