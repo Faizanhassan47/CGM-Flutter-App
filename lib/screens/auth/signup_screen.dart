@@ -129,6 +129,7 @@ class _SignupScreenState extends State<SignupScreen> {
         idToken: idToken,
         fullName: account.displayName,
         email: account.email,
+        photoUrl: account.photoUrl,
       );
       if (mounted && widget.controller.authenticated) {
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -226,7 +227,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                   CustomUnderlineField(
                     controller: phoneController,
-                    label: 'Patient Phone Number (Optional)',
+                    label: 'Phone Number (Optional)',
                     hintText: 'Enter phone number',
                     prefixIcon: Icons.phone_outlined,
                     keyboardType: TextInputType.phone,

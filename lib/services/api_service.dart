@@ -339,6 +339,25 @@ class ApiService {
     return res is Map<String, dynamic> ? res : <String, dynamic>{};
   }
 
+  /// Uploads user avatar photo directly to iDrive e2 S3 via backend endpoint.
+  Future<Map<String, dynamic>> uploadProfilePicture(List<int> bytes, String filename) async {
+    final request = http.MultipartRequest('POST', _uri('api/Profile/picture'));
+    if (_accessToken != null) {
+      request.headers['Authorization'] = 'Bearer $_accessToken';
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+      ),
+    );
+    final streamed = await _client.send(request);
+    final response = await http.Response.fromStream(streamed);
+    final res = _handle(response);
+    return res is Map<String, dynamic> ? res : <String, dynamic>{};
+  }
+
   // ===========================================================================
   // 3. CGM DEVICES APIS
   // ===========================================================================
@@ -780,10 +799,15 @@ class ApiService {
     required String token,
     required String platform,
   }) async {
-    await post('api/notification-endpoints', {
-      'endpointArn': token,
-      'platform': platform,
-    });
+    try {
+      await post('api/notification-endpoints', {
+        'channel': 'Push',
+        'address': token,
+        'enabled': true,
+      });
+    } catch (e) {
+      debugPrint('[API] registerPushNotificationToken warning: $e');
+    }
   }
 
   /// Log phone hardware specifications into PhoneHardwareLogs table.

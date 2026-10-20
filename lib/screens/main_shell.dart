@@ -33,7 +33,21 @@ class _MainShellState extends State<MainShell> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: currentIndex, children: pages),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 240),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey<int>(currentIndex),
+          child: pages[currentIndex],
+        ),
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: AppColors.surface,

@@ -1,15 +1,25 @@
 import 'package:cgm_sdk/cgm_sdk.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'core/app_theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding/patient_profile_setup_screen.dart';
 import 'services/api_service.dart';
+import 'services/notification_service.dart';
 import 'state/app_controller.dart';
 import 'widgets/brand_header.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  } catch (e) {
+    debugPrint('[Firebase] Startup initialization note: $e');
+  }
 
   // In release APKs, Flutter defaults to a blank/white container on unhandled errors.
   // This custom ErrorWidget ensures any startup error is visibly readable instead of a white screen.
@@ -109,24 +119,65 @@ class _CircleAppState extends State<CircleApp> {
   }
 }
 
-class SplashView extends StatelessWidget {
+class SplashView extends StatefulWidget {
   const SplashView({super.key});
 
   @override
+  State<SplashView> createState() => _SplashViewState();
+}
+
+class _SplashViewState extends State<SplashView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late final Animation<double> _fade;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _fade = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
+    _scale = Tween<double>(begin: 0.92, end: 1.0).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeOutBack),
+    );
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: AppColors.surface,
       body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            BrandHeader(),
-            SizedBox(height: 36),
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryPurple),
-              strokeWidth: 2.5,
+        child: FadeTransition(
+          opacity: _fade,
+          child: ScaleTransition(
+            scale: _scale,
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                BrandHeader(),
+                SizedBox(height: 36),
+                SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(AppTheme.primaryPurple),
+                    strokeWidth: 2.5,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

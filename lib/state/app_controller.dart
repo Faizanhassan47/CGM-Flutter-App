@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_config.dart';
 import '../services/api_service.dart';
+import '../services/notification_service.dart';
 
 class AppController extends ChangeNotifier {
   AppController(this.api);
@@ -32,6 +33,7 @@ class AppController extends ChangeNotifier {
   String phoneNumber = '';
   String dateOfBirth = '';
   String gender = '';
+  String? profilePictureUrl;
   String authProvider = '';
   bool hasPassword = false;
   String preferredGlucoseUnit = 'mg/dL';
@@ -100,6 +102,9 @@ class AppController extends ChangeNotifier {
         await loadOvernightReport();
         await loadActiveDeviceAndSensor();
         unawaited(sendPhoneHardwareLogs());
+        unawaited(NotificationService.instance.initialize(apiService: api));
+      } else {
+        unawaited(NotificationService.instance.initialize());
       }
 
       await CgmSdk.init(
@@ -136,6 +141,7 @@ class AppController extends ChangeNotifier {
         phoneNumber = data['phoneNumber']?.toString() ?? phoneNumber;
         dateOfBirth = data['dateOfBirth']?.toString() ?? dateOfBirth;
         gender = data['gender']?.toString() ?? gender;
+        profilePictureUrl = data['profilePictureUrl']?.toString() ?? profilePictureUrl;
         authProvider = data['authProvider']?.toString() ?? authProvider;
         hasPassword = data['hasPassword'] == true;
         preferredGlucoseUnit =
@@ -327,6 +333,17 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  /// Uploads user profile picture and updates profilePictureUrl.
+  Future<void> uploadProfilePicture(List<int> bytes, String filename) async {
+    await _run(() async {
+      final res = await api.uploadProfilePicture(bytes, filename);
+      if (res['profilePictureUrl'] != null) {
+        profilePictureUrl = res['profilePictureUrl'].toString();
+      }
+      notifyListeners();
+    });
+  }
+
   Future<void> saveLanguage(String newLanguage) async {
     await saveProfile(name: fullName, lang: newLanguage);
     final prefs = await SharedPreferences.getInstance();
@@ -379,6 +396,7 @@ class AppController extends ChangeNotifier {
           loadAlerts(),
           loadReports(),
           sendPhoneHardwareLogs(),
+          NotificationService.instance.initialize(apiService: api),
         ]),
       );
     });
@@ -388,6 +406,7 @@ class AppController extends ChangeNotifier {
     required String idToken,
     String? fullName,
     String? email,
+    String? photoUrl,
   }) async {
     await _run(() async {
       final res = await api.socialLogin(
@@ -401,6 +420,9 @@ class AppController extends ChangeNotifier {
       }
       if (email != null && email.isNotEmpty) {
         userEmail = email;
+      }
+      if (photoUrl != null && photoUrl.isNotEmpty) {
+        profilePictureUrl = photoUrl;
       }
       final userMap = res['user'];
       if (userMap is Map<String, dynamic>) {
@@ -427,6 +449,7 @@ class AppController extends ChangeNotifier {
           loadAlerts(),
           loadReports(),
           sendPhoneHardwareLogs(),
+          NotificationService.instance.initialize(apiService: api),
         ]),
       );
     });
@@ -468,6 +491,7 @@ class AppController extends ChangeNotifier {
       unawaited(loadUserProfile());
       unawaited(loadFamily());
       unawaited(sendPhoneHardwareLogs());
+      unawaited(NotificationService.instance.initialize(apiService: api));
     });
   }
 

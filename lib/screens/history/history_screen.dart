@@ -228,7 +228,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const SizedBox(height: 20),
 
               // Glucose Readings List Card
-              _buildGlucoseReadingsCard(readings, lowTarget, highTarget),
+              _buildGlucoseReadingsCard(
+                readings,
+                lowTarget,
+                highTarget,
+                hasRealData: hasRealData,
+              ),
               const SizedBox(height: 24),
 
               // Daily Summary Metrics Card
@@ -264,7 +269,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
-                color: AppPalette.hexFF5E2B97,
+                color: Colors.black,
                 letterSpacing: -0.5,
               ),
             ),
@@ -679,8 +684,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildGlucoseReadingsCard(
     List<GlucoseSample> readings,
     double lowTarget,
-    double highTarget,
-  ) {
+    double highTarget, {
+    required bool hasRealData,
+  }) {
     final dateDisplay = DateFormat('EEEE, MMM d, yyyy').format(selectedDate);
     final displayed = _showAllReadings ? readings : readings.take(9).toList();
 
@@ -729,144 +735,171 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Items
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: displayed.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final r = displayed[index];
-              final mg = (r.value! * 18.0182).round();
-              final timeStr = DateFormat(
-                'h:mm a',
-              ).format(r.measuredAt).toLowerCase();
+          // Items or Empty State
+          if (!hasRealData || readings.isEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(
+                      Icons.history_toggle_off_rounded,
+                      size: 36,
+                      color: AppPalette.hexFF7E6E91,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'No stored readings for this date',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppPalette.hexFF7E6E91,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: displayed.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final r = displayed[index];
+                final mg = (r.value! * 18.0182).round();
+                final timeStr = DateFormat(
+                  'h:mm a',
+                ).format(r.measuredAt).toLowerCase();
 
-              final isUrgent = mg < 55 || mg > 250;
-              final isLow = mg < lowTarget;
-              final isHigh = mg > highTarget;
+                final isUrgent = mg < 55 || mg > 250;
+                final isLow = mg < lowTarget;
+                final isHigh = mg > highTarget;
 
-              Color statusColor = AppPalette.hexFF10B981; // in range
-              String statusText = 'In range';
-              if (isUrgent) {
-                statusColor = AppPalette.hexFF3C096C;
-                statusText = mg < 55 ? 'Urgent Low' : 'Urgent High';
-              } else if (isLow) {
-                statusColor = AppPalette.hexFF0096C7;
-                statusText = 'Low';
-              } else if (isHigh) {
-                statusColor = AppPalette.hexFF7B2CBF;
-                statusText = 'High';
-              }
+                Color statusColor = AppPalette.hexFF10B981; // in range
+                String statusText = 'In range';
+                if (isUrgent) {
+                  statusColor = AppPalette.hexFF3C096C;
+                  statusText = mg < 55 ? 'Urgent Low' : 'Urgent High';
+                } else if (isLow) {
+                  statusColor = AppPalette.hexFF0096C7;
+                  statusText = 'Low';
+                } else if (isHigh) {
+                  statusColor = AppPalette.hexFF7B2CBF;
+                  statusText = 'High';
+                }
 
-              return InkWell(
-                onTap: () =>
-                    _showReadingDetailDialog(r, mg, statusText, statusColor),
-                borderRadius: AppRadii.r12,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 4,
-                    horizontal: 2,
+                return InkWell(
+                  onTap: () =>
+                      _showReadingDetailDialog(r, mg, statusText, statusColor),
+                  borderRadius: AppRadii.r12,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 2,
+                    ),
+                    child: Row(
+                      children: [
+                        // Time
+                        SizedBox(
+                          width: 75,
+                          child: Text(
+                            timeStr,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppPalette.hexFF7E6E91,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Value
+                        SizedBox(
+                          width: 45,
+                          child: Text(
+                            '$mg',
+                            style: const TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppPalette.hexFF2E1A47,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+
+                        // Dot & Status
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 80,
+                          child: Text(
+                            statusText,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppPalette.hexFF4A3E5C,
+                            ),
+                          ),
+                        ),
+
+                        // Arrow
+                        const Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 16,
+                          color: AppPalette.hexFF5E2B97,
+                        ),
+                      ],
+                    ),
                   ),
+                );
+              },
+            ),
+            if (readings.length > 9) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _showAllReadings = !_showAllReadings;
+                    });
+                  },
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Time
-                      SizedBox(
-                        width: 75,
-                        child: Text(
-                          timeStr,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppPalette.hexFF7E6E91,
-                            fontWeight: FontWeight.w500,
-                          ),
+                      Text(
+                        _showAllReadings
+                            ? 'Show Fewer Readings'
+                            : 'View All Readings',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppPalette.hexFF5E2B97,
                         ),
                       ),
-                      const SizedBox(width: 8),
-
-                      // Value
-                      SizedBox(
-                        width: 45,
-                        child: Text(
-                          '$mg',
-                          style: const TextStyle(
-                            fontSize: 16.5,
-                            fontWeight: FontWeight.w800,
-                            color: AppPalette.hexFF2E1A47,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-
-                      // Dot & Status
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 80,
-                        child: Text(
-                          statusText,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppPalette.hexFF4A3E5C,
-                          ),
-                        ),
-                      ),
-
-                      // Arrow
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 16,
+                      const SizedBox(width: 4),
+                      Icon(
+                        _showAllReadings
+                            ? Icons.keyboard_arrow_up
+                            : Icons.chevron_right,
+                        size: 18,
                         color: AppPalette.hexFF5E2B97,
                       ),
                     ],
                   ),
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // View All Readings button
-          Center(
-            child: TextButton(
-              onPressed: () {
-                setState(() {
-                  _showAllReadings = !_showAllReadings;
-                });
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _showAllReadings
-                        ? 'Show Fewer Readings'
-                        : 'View All Readings',
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppPalette.hexFF5E2B97,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _showAllReadings
-                        ? Icons.keyboard_arrow_up
-                        : Icons.chevron_right,
-                    size: 18,
-                    color: AppPalette.hexFF5E2B97,
-                  ),
-                ],
               ),
-            ),
-          ),
+            ],
+          ],
         ],
       ),
     );

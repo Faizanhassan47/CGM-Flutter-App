@@ -26,10 +26,11 @@ abstract final class AppColors {
   static const surface = Color(0xFFFFFFFF);
   static const surfaceBorder = Color(0xFFF0E3DF);
 
-  static const textPrimary = Color(0xFF201C1B);
-  static const textSecondary = Color(0xFF746B68);
-  static const textDisabled = Color(0xFFAAA19E);
-  static const inputBorder = Color(0xFF918986);
+  static const textPrimary = Color(0xFF1F2937); // Deep slate gray for bold/headings
+  static const textBody = Color(0xFF4B5563);    // Balanced neutral gray for body text
+  static const textSecondary = Color(0xFF6B7280); // Muted gray for captions/subtitles
+  static const textDisabled = Color(0xFF9CA3AF);
+  static const inputBorder = Color(0xFFD1D5DB);
 
   static const success = Color(0xFF22C55E);
   static const successDark = Color(0xFF15803D);
@@ -236,21 +237,21 @@ abstract final class AppTextStyles {
   static const display = TextStyle(
     fontSize: 32,
     fontWeight: FontWeight.w800,
-    color: AppColors.primaryDark,
+    color: AppColors.textPrimary,
     letterSpacing: -0.5,
   );
 
   static const pageTitle = TextStyle(
     fontSize: 30,
     fontWeight: FontWeight.w800,
-    color: AppColors.primaryDark,
+    color: AppColors.textPrimary,
     letterSpacing: -0.5,
   );
 
   static const sectionTitle = TextStyle(
     fontSize: 20,
     fontWeight: FontWeight.w800,
-    color: AppColors.primaryDark,
+    color: AppColors.textPrimary,
   );
 
   static const title = TextStyle(
@@ -262,7 +263,7 @@ abstract final class AppTextStyles {
   static const body = TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.w500,
-    color: AppColors.textPrimary,
+    color: AppColors.textBody,
   );
 
   static const bodyMuted = TextStyle(
@@ -274,7 +275,7 @@ abstract final class AppTextStyles {
   static const label = TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.w600,
-    color: AppColors.primaryDark,
+    color: AppColors.textPrimary,
   );
 
   static const button = TextStyle(fontSize: 16, fontWeight: FontWeight.w700);
@@ -327,7 +328,7 @@ class AppTheme {
   const AppTheme._();
 
   static const primaryPurple = AppColors.primary;
-  static const darkPurple = AppColors.primaryDark;
+  static const darkPurple = AppColors.textPrimary;
   static const lightPurpleBg = AppColors.primarySoft;
   static const purpleBorder = AppColors.primaryBorder;
   static const accentCyan = AppColors.accent;
@@ -370,10 +371,10 @@ class AppTheme {
       elevation: 0,
       centerTitle: true,
       scrolledUnderElevation: 0,
-      iconTheme: IconThemeData(color: AppColors.primary),
+      iconTheme: IconThemeData(color: AppColors.textPrimary),
       titleTextStyle: TextStyle(
         fontFamily: 'Manrope',
-        color: AppColors.primary,
+        color: AppColors.textPrimary,
         fontSize: 18,
         fontWeight: FontWeight.w700,
       ),
@@ -394,6 +395,12 @@ class AppTheme {
       focusedBorder: UnderlineInputBorder(
         borderSide: BorderSide(color: AppColors.primary, width: 2),
       ),
+    ),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: ZoomPageTransitionsBuilder(),
+        TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
+      },
     ),
     progressIndicatorTheme: const ProgressIndicatorThemeData(
       color: AppColors.primary,

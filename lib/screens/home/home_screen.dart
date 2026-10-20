@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
+import '../../widgets/app_animations.dart';
 import '../../widgets/glucose_trend_chart.dart';
 import '../onboarding/device_setup_screen.dart';
 
@@ -118,17 +119,33 @@ class HomeScreen extends StatelessWidget {
                     GestureDetector(
                       onTap: () => onSwitchTab(4), // navigate to Profile tab
                       child: Container(
-                        width: 46,
-                        height: 46,
-                        decoration: const BoxDecoration(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
                           color: AppTheme.lightPurpleBg,
                           shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppTheme.primaryPurple.withValues(alpha: 0.35),
+                            width: 1.5,
+                          ),
+                          image: controller.profilePictureUrl != null &&
+                                  controller.profilePictureUrl!.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(
+                                    controller.profilePictureUrl!,
+                                  ),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
                         ),
-                        child: const Icon(
-                          Icons.person_rounded,
-                          color: AppTheme.primaryPurple,
-                          size: 26,
-                        ),
+                        child: controller.profilePictureUrl == null ||
+                                controller.profilePictureUrl!.isEmpty
+                            ? const Icon(
+                                Icons.person_rounded,
+                                color: AppTheme.primaryPurple,
+                                size: 26,
+                              )
+                            : null,
                       ),
                     ),
                   ],
@@ -136,12 +153,18 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 18),
 
                 // 2. Sensor status / Reconnecting card
-                _buildSensorStatusCard(context, isConnected),
+                FadeSlideEntrance(
+                  delay: const Duration(milliseconds: 50),
+                  child: _buildSensorStatusCard(context, isConnected),
+                ),
                 const SizedBox(height: 14),
 
                 // 3. Connect a CGM sensor purple banner (hidden once connected or bound)
                 if (!isConnected && controller.wear == null) ...[
-                  _buildConnectCgmBanner(context),
+                  FadeSlideEntrance(
+                    delay: const Duration(milliseconds: 80),
+                    child: _buildConnectCgmBanner(context),
+                  ),
                   const SizedBox(height: 16),
                 ],
 
@@ -208,38 +231,58 @@ class HomeScreen extends StatelessWidget {
                 ),
 
                 // 5. Glucose Telemetry Cyan Card
-                _buildTelemetryCyanCard(
-                  context,
-                  mg,
-                  statusText,
-                  lowT,
-                  highT,
-                  isConnected: isConnected,
-                  unitStr: unitStr,
-                  displayGlucose: displayGlucose,
-                  targetStr: targetStr,
-                  isUrgentLow: isUrgentLow,
-                  isHigh: mg != null && mg > highT,
+                FadeSlideEntrance(
+                  delay: const Duration(milliseconds: 100),
+                  child: _buildTelemetryCyanCard(
+                    context,
+                    mg,
+                    statusText,
+                    lowT,
+                    highT,
+                    isConnected: isConnected,
+                    unitStr: unitStr,
+                    displayGlucose: displayGlucose,
+                    targetStr: targetStr,
+                    isUrgentLow: isUrgentLow,
+                    isHigh: mg != null && mg > highT,
+                  ),
                 ),
                 const SizedBox(height: 24),
 
                 if (isConnected) ...[
                   // Sensor-derived summaries remain hidden while offline so
                   // stale readings cannot be mistaken for live values.
-                  _buildTodayAtAGlance(true),
+                  FadeSlideEntrance(
+                    delay: const Duration(milliseconds: 150),
+                    child: _buildTodayAtAGlance(true),
+                  ),
                   const SizedBox(height: 24),
-                  GlucoseTrendCard(
-                    samples: controller.history,
-                    lowTarget: lowT,
-                    highTarget: highT,
+                  FadeSlideEntrance(
+                    delay: const Duration(milliseconds: 200),
+                    child: GlucoseTrendCard(
+                      samples: controller.history,
+                      lowTarget: lowT,
+                      highTarget: highT,
+                    ),
                   ),
                   const SizedBox(height: 20),
-                  _buildDietAssistantCard(mg, lowT, highT, controller.history),
+                  FadeSlideEntrance(
+                    delay: const Duration(milliseconds: 250),
+                    child: _buildDietAssistantCard(
+                      mg,
+                      lowT,
+                      highT,
+                      controller.history,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                 ],
 
                 // 8. "Target range" Card (Screenshot 091624)
-                _buildTargetRangeCard(lowT, highT),
+                FadeSlideEntrance(
+                  delay: const Duration(milliseconds: 300),
+                  child: _buildTargetRangeCard(lowT, highT),
+                ),
                 const SizedBox(height: 24),
               ],
             ),
@@ -279,12 +322,24 @@ class HomeScreen extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              isConnected ? Icons.sensors_rounded : Icons.sensors_off_rounded,
-              color: isConnected
-                  ? AppTheme.successGreen
-                  : AppTheme.primaryPurple,
-              size: 24,
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                if (isConnected)
+                  const SubtlePulseIndicator(
+                    color: AppTheme.successGreen,
+                    size: 26,
+                  ),
+                Icon(
+                  isConnected
+                      ? Icons.sensors_rounded
+                      : Icons.sensors_off_rounded,
+                  color: isConnected
+                      ? AppTheme.successGreen
+                      : AppTheme.primaryPurple,
+                  size: 24,
+                ),
+              ],
             ),
             const SizedBox(width: 14),
             Expanded(

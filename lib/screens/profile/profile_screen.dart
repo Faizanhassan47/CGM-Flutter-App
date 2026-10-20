@@ -1,7 +1,10 @@
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
+import '../../widgets/app_animations.dart';
 import 'family_circle_screen.dart';
 import 'linked_device_screen.dart';
 import 'notification_preferences_screen.dart';
@@ -115,8 +118,8 @@ class ProfileScreen extends StatelessWidget {
             GestureDetector(
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PersonalInfoScreen(controller: controller),
+                  SmoothPageRoute(
+                    page: PersonalInfoScreen(controller: controller),
                   ),
                 );
               },
@@ -131,35 +134,53 @@ class ProfileScreen extends StatelessWidget {
                   children: [
                     Stack(
                       children: [
-                        Container(
-                          width: 58,
-                          height: 58,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppTheme.primaryPurple,
-                              width: 2,
+                        GestureDetector(
+                          onTap: () => _pickAndUploadAvatar(context),
+                          child: Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppTheme.primaryPurple,
+                                width: 2,
+                              ),
+                              image: controller.profilePictureUrl != null &&
+                                      controller.profilePictureUrl!.isNotEmpty
+                                  ? DecorationImage(
+                                      image: NetworkImage(
+                                        controller.profilePictureUrl!,
+                                      ),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
                             ),
-                          ),
-                          child: const Icon(
-                            Icons.person_outline_rounded,
-                            color: AppTheme.primaryPurple,
-                            size: 34,
+                            child: controller.profilePictureUrl == null ||
+                                    controller.profilePictureUrl!.isEmpty
+                                ? const Icon(
+                                    Icons.person_outline_rounded,
+                                    color: AppTheme.primaryPurple,
+                                    size: 34,
+                                  )
+                                : null,
                           ),
                         ),
                         Positioned(
                           bottom: 0,
                           right: 0,
-                          child: Container(
-                            padding: AppInsets.all3,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.primaryPurple,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.edit,
-                              size: 10,
-                              color: AppColors.surface,
+                          child: GestureDetector(
+                            onTap: () => _pickAndUploadAvatar(context),
+                            child: Container(
+                              padding: AppInsets.all3,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.primaryPurple,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                size: 12,
+                                color: AppColors.surface,
+                              ),
                             ),
                           ),
                         ),
@@ -518,16 +539,6 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     _buildDivider(),
                     _buildSettingsTile(
-                      icon: Icons.language_rounded,
-                      title: 'Language',
-                      subtitle: 'Choose app & backend language',
-                      trailingText: controller.language,
-                      onTap: () {
-                        _showLanguageDialog(context);
-                      },
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
                       icon: Icons.track_changes_rounded,
                       title: 'Target Glucose Range',
                       subtitle:
@@ -794,46 +805,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  void _showLanguageDialog(BuildContext context) {
-    const languages = [
-      'English',
-      "Spanish",
-      "French",
-      "German",
-      "Arabic",
-      "Urdu",
-      "Chinese",
-    ];
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Select Language'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: languages.map((lang) {
-              final isSelected =
-                  controller.language.toLowerCase() == lang.toLowerCase() ||
-                  lang.toLowerCase().startsWith(
-                    controller.language.toLowerCase(),
-                  );
-              return ListTile(
-                title: Text(lang),
-                trailing: isSelected
-                    ? const Icon(Icons.check, color: AppTheme.primaryPurple)
-                    : null,
-                onTap: () async {
-                  await controller.saveLanguage(lang);
-                  if (ctx.mounted) Navigator.of(ctx).pop();
-                },
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
+ 
 
   void _showTargetRangeDialog(BuildContext context) {
     double localLow = controller.targetLow;
@@ -1139,5 +1111,118 @@ class ProfileScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _pickAndUploadAvatar(BuildContext context) async {
+    final picker = ImagePicker();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Change Profile Photo',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.primaryPurple),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: AppTheme.primaryPurple),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    try {
+      final picked = await picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 92,
+      );
+      if (picked == null) return;
+
+      // Crop with passport size presets and manual adjustment
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Adjust Profile Photo',
+            toolbarColor: AppTheme.primaryPurple,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: AppTheme.primaryPurple,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: false,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio3x2,
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'Adjust Profile Photo',
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio3x2,
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+        ],
+      );
+
+      if (croppedFile == null) return;
+
+      final bytes = await croppedFile.readAsBytes();
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Uploading profile photo...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      await controller.uploadProfilePicture(bytes, picked.name);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile photo updated successfully!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to upload photo: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 }

@@ -6,6 +6,7 @@ import 'package:printing/printing.dart';
 import '../../core/app_theme.dart';
 import '../../services/report_pdf_service.dart';
 import '../../state/app_controller.dart';
+import '../../widgets/app_animations.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key, required this.controller});
@@ -373,60 +374,102 @@ class _ReportsScreenState extends State<ReportsScreen> {
               // 1. Top Header: Logo + "Export Report" + Back Button
               _buildTopHeader(context),
               if (_loadingReport) ...[
-                const SizedBox(height: 10),
-                const LinearProgressIndicator(
-                  minHeight: 3,
-                  color: AppTheme.accentCyan,
-                  backgroundColor: AppTheme.lightCyanBg,
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: AppRadii.borderSm,
+                  child: const ShimmerBox(
+                    width: double.infinity,
+                    height: 4,
+                  ),
                 ),
               ],
               const SizedBox(height: 18),
 
               // 2. Report Range Card with Dropdown Selector
-              _buildRangeCard(totalDays, dateRangeStr),
+              FadeSlideEntrance(
+                delay: const Duration(milliseconds: 50),
+                child: _buildRangeCard(totalDays, dateRangeStr),
+              ),
               const SizedBox(height: 22),
 
               // 3. Summary Title & Subtitle
-              const Text(
-                'Summary',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.darkPurple,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Key metrics for the selected $totalDays-day period.',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppTheme.textMuted,
-                  fontWeight: FontWeight.w500,
+              FadeSlideEntrance(
+                delay: const Duration(milliseconds: 100),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Summary',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.darkPurple,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Key metrics for the selected $totalDays-day period.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textMuted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 14),
 
               // 4. Five Summary Cards (Horizontal Scroll or Flex Row)
-              _buildSummaryCardsStrip(
-                avgGlucose: avgGlucose,
-                tir: tir,
-                a1c: a1c,
-                lowEvents: lowEvents,
-                highEvents: highEvents,
+              FadeSlideEntrance(
+                delay: const Duration(milliseconds: 150),
+                child: _loadingReport
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: List.generate(
+                            3,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 12),
+                              child: ShimmerBox(
+                                width: 110,
+                                height: 90,
+                                borderRadius: AppRadii.borderLg,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : _buildSummaryCardsStrip(
+                        avgGlucose: avgGlucose,
+                        tir: tir,
+                        a1c: a1c,
+                        lowEvents: lowEvents,
+                        highEvents: highEvents,
+                      ),
               ),
               const SizedBox(height: 22),
 
               // 5. Periodic Breakdown Table Card
-              _buildBreakdownTableCard(totalDays, breakdownItems),
+              FadeSlideEntrance(
+                delay: const Duration(milliseconds: 200),
+                child: _buildBreakdownTableCard(totalDays, breakdownItems),
+              ),
               const SizedBox(height: 16),
 
               // 6. Blue Notice Banner
-              _buildNoticeBanner(totalDays),
+              FadeSlideEntrance(
+                delay: const Duration(milliseconds: 250),
+                child: _buildNoticeBanner(totalDays),
+              ),
               const SizedBox(height: 24),
 
               // 7. Export Format Selector (PDF, CSV, Share)
-              _buildExportFormatSection(),
+              FadeSlideEntrance(
+                delay: const Duration(milliseconds: 300),
+                child: _buildExportFormatSection(),
+              ),
               const SizedBox(height: 20),
 
               // 8. Main Export Button

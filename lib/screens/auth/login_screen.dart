@@ -72,6 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken: idToken,
         fullName: account.displayName,
         email: account.email,
+        photoUrl: account.photoUrl,
       );
     } catch (e) {
       setState(() => validationError = e.toString());

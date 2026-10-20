@@ -41,10 +41,40 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
     selectedUnit = widget.controller.preferredGlucoseUnit;
     pushNotifications = widget.controller.pushNotifications;
     criticalAlerts = widget.controller.criticalAlerts;
+
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (!mounted) return;
+    bool needsSetState = false;
+
+    if (nameController.text.trim().isEmpty && widget.controller.fullName.trim().isNotEmpty) {
+      nameController.text = widget.controller.fullName;
+    }
+    if (emailController.text.trim().isEmpty && widget.controller.userEmail.trim().isNotEmpty) {
+      emailController.text = widget.controller.userEmail;
+    }
+    if (phoneController.text.trim().isEmpty && widget.controller.phoneNumber.trim().isNotEmpty) {
+      phoneController.text = widget.controller.phoneNumber;
+    }
+    if (dateOfBirthController.text.trim().isEmpty && widget.controller.dateOfBirth.trim().isNotEmpty) {
+      dateOfBirthController.text = widget.controller.dateOfBirth;
+    }
+    if ((selectedGender == null || selectedGender!.isEmpty) &&
+        widget.controller.gender.trim().isNotEmpty) {
+      selectedGender = widget.controller.gender;
+      needsSetState = true;
+    }
+
+    if (needsSetState) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
@@ -174,7 +204,7 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
             children: [
               const SizedBox(height: 12),
               const Text(
-                'Set Up Your Patient Profile',
+                'Set Up Your User Profile',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w800,
@@ -230,7 +260,7 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
               const SizedBox(height: 20),
 
               DropdownButtonFormField<String>(
-                initialValue: selectedGender,
+                value: selectedGender,
                 decoration: const InputDecoration(
                   labelText: 'Gender',
                   prefixIcon: Icon(Icons.person_search_outlined),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
@@ -117,6 +119,63 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 10),
+              Center(
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: _pickAndUploadAvatar,
+                      child: Container(
+                        width: 86,
+                        height: 86,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppTheme.primaryPurple,
+                            width: 2.5,
+                          ),
+                          image: widget.controller.profilePictureUrl != null &&
+                                  widget.controller.profilePictureUrl!.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(
+                                    widget.controller.profilePictureUrl!,
+                                  ),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: widget.controller.profilePictureUrl == null ||
+                                widget.controller.profilePictureUrl!.isEmpty
+                            ? const Icon(
+                                Icons.person_outline_rounded,
+                                color: AppTheme.primaryPurple,
+                                size: 48,
+                              )
+                            : null,
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: _pickAndUploadAvatar,
+                        child: Container(
+                          padding: AppInsets.all6,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primaryPurple,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt,
+                            size: 14,
+                            color: AppColors.surface,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               CustomUnderlineField(
                 controller: nameController,
                 label: 'Full name',
@@ -135,7 +194,7 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
 
               CustomUnderlineField(
                 controller: phoneController,
-                label: 'Patient phone number',
+                label: 'Phone number',
                 hintText: 'Enter phone number',
                 keyboardType: TextInputType.phone,
               ),
@@ -174,5 +233,119 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final picker = ImagePicker();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Change Profile Photo',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.primaryPurple),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined, color: AppTheme.primaryPurple),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    try {
+      final picked = await picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 92,
+      );
+      if (picked == null) return;
+
+      // Crop with passport size presets and manual adjustment
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Adjust Profile Photo',
+            toolbarColor: AppTheme.primaryPurple,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: AppTheme.primaryPurple,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: false,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio3x2,
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'Adjust Profile Photo',
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+              CropAspectRatioPreset.ratio3x2,
+              CropAspectRatioPreset.original,
+              CropAspectRatioPreset.ratio4x3,
+            ],
+          ),
+        ],
+      );
+
+      if (croppedFile == null) return;
+
+      final bytes = await croppedFile.readAsBytes();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Uploading profile photo...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      await widget.controller.uploadProfilePicture(bytes, picked.name);
+
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile photo updated successfully!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to upload photo: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
   }
 }
