@@ -107,13 +107,13 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
     }
   }
 
-  void _onDeleteAccount() async {
+  void _onDisableAccount() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Account?'),
+        title: const Text('Disable Account?'),
         content: const Text(
-          'This action is irreversible. All your glucose and health data will be deleted permanently.',
+          'Your account will be disabled and active sensors will stop. Your data will be retained. Register again with this email and complete your details to reactivate it.',
         ),
         actions: [
           TextButton(
@@ -126,7 +126,7 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text(
-              'Delete',
+              'Disable',
               style: TextStyle(color: AppColors.surface),
             ),
           ),
@@ -144,7 +144,7 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        ).showSnackBar(SnackBar(content: Text('Disable failed: $e')));
       }
     }
   }
@@ -316,7 +316,7 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
             ),
             const SizedBox(height: 20),
 
-            // "Delete account" Card
+            // "Disable account" Card
             Container(
               padding: AppInsets.all20,
               decoration: BoxDecoration(
@@ -328,7 +328,7 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Delete account',
+                    'Disable account',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -337,7 +337,7 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Permanently remove your account and all associated health data.',
+                    'Temporarily disable your account. Your health data is retained and can be restored by completing registration again with this email.',
                     style: TextStyle(
                       fontSize: 12.5,
                       color: AppTheme.textMuted,
@@ -348,9 +348,9 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
 
                   PillButton(
                     variant: PillButtonVariant.danger,
-                    text: 'Delete Account',
+                    text: 'Disable Account',
                     loading: widget.controller.loading,
-                    onPressed: _onDeleteAccount,
+                    onPressed: _onDisableAccount,
                   ),
                 ],
               ),
