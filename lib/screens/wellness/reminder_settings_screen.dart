@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/notification_service.dart';
+import 'meal_reminders_screen.dart';
+import 'water_reminders_screen.dart';
 
 class ReminderSettingsScreen extends StatefulWidget {
   const ReminderSettingsScreen({super.key, required this.api});
@@ -73,6 +75,39 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const CircleAvatar(child: Icon(Icons.restaurant_outlined)),
+            title: const Text(
+              'Meal Reminders',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: const Text('Breakfast, lunch, dinner and custom meals'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MealRemindersScreen(api: widget.api),
+              ),
+            ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const CircleAvatar(child: Icon(Icons.water_drop_outlined)),
+            title: const Text(
+              'Water Reminders',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: const Text('Interval, daily goal and quiet hours'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => WaterRemindersScreen(api: widget.api),
+              ),
+            ),
+          ),
+          const Divider(height: 28),
           SwitchListTile(
             title: const Text('Meal reminders'),
             value: settings['mealEnabled'] == true,

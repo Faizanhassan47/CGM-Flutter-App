@@ -841,6 +841,12 @@ class ApiService {
   Future<Map<String, dynamic>> createMealReminderSchedule(
     Map<String, dynamic> schedule,
   ) async => _map(await post('api/wellness/reminder-schedules', schedule));
+  Future<Map<String, dynamic>> updateMealReminderSchedule(
+    int id,
+    Map<String, dynamic> schedule,
+  ) async => _map(
+    await _send('PATCH', 'api/wellness/reminder-schedules/$id', body: schedule),
+  );
 
   Future<Map<String, dynamic>> getWellnessToday({
     String? startUtc,

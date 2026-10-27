@@ -11,6 +11,8 @@ import 'notification_preferences_screen.dart';
 import 'personal_info_screen.dart';
 import 'privacy_security_dialog.dart';
 import '../wellness/wellness_screen.dart';
+import '../wellness/meal_reminders_screen.dart';
+import '../wellness/water_reminders_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.controller});
@@ -489,13 +491,28 @@ class ProfileScreen extends StatelessWidget {
                 color: AppColors.transparent,
                 child: Column(
                   children: [
+                    
+                    _buildDivider(),
                     _buildSettingsTile(
-                      icon: Icons.health_and_safety_outlined,
-                      title: 'Health & Lifestyle',
-                      subtitle: 'Meals, hydration and reminders',
+                      icon: Icons.restaurant_outlined,
+                      title: 'Meal Reminders',
+                      subtitle: 'Manage breakfast, lunch and custom meals',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => WellnessScreen(api: controller.api),
+                          builder: (_) =>
+                              MealRemindersScreen(api: controller.api),
+                        ),
+                      ),
+                    ),
+                    _buildDivider(),
+                    _buildSettingsTile(
+                      icon: Icons.water_drop_outlined,
+                      title: 'Water Reminders',
+                      subtitle: 'Manage hydration intervals and quiet hours',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              WaterRemindersScreen(api: controller.api),
                         ),
                       ),
                     ),

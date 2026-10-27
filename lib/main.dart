@@ -8,6 +8,8 @@ import 'screens/main_shell.dart';
 import 'screens/onboarding/patient_profile_setup_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
+import 'services/app_update_service.dart';
+import 'screens/app_update_gate.dart';
 import 'state/app_controller.dart';
 import 'widgets/brand_header.dart';
 
@@ -24,13 +26,17 @@ Future<void> main() async {
   // In release APKs, Flutter defaults to a blank/white container on unhandled errors.
   // This custom ErrorWidget ensures any startup error is visibly readable instead of a white screen.
   ErrorWidget.builder = (FlutterErrorDetails details) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
+    debugPrint('[UI ERROR] ${details.exceptionAsString()}');
+    if (details.stack != null) {
+      debugPrintStack(stackTrace: details.stack);
+    }
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ColoredBox(
+        color: Colors.white,
+        child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(20),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,11 +86,52 @@ class CircleApp extends StatefulWidget {
 
 class _CircleAppState extends State<CircleApp> {
   late final AppController controller = AppController(ApiService());
+  AppUpdatePolicy? updatePolicy;
 
   @override
   void initState() {
     super.initState();
     controller.initialize();
+    _checkUpdates();
+  }
+
+  Future<void> _checkUpdates() async {
+    final policy = await AppUpdateService.instance.check();
+    if (mounted) setState(() => updatePolicy = policy);
+    if (mounted &&
+        policy.state == UpdateState.optionalUpdate &&
+        !AppUpdateService.instance.optionalShown) {
+      AppUpdateService.instance.markOptionalShown();
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Update Available'),
+          content: Text(
+            policy.releaseNotes.isEmpty
+                ? (policy.message.isEmpty
+                      ? 'A new version of Circle CGM is available.'
+                      : policy.message)
+                : policy.releaseNotes,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                AppUpdateService.instance.launchUpdate(
+                  policy,
+                  mandatory: false,
+                );
+              },
+              child: const Text('Update Now'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
@@ -96,6 +143,9 @@ class _CircleAppState extends State<CircleApp> {
       home: AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
+          if (updatePolicy?.state == UpdateState.mandatoryUpdate) {
+            return AppUpdateGate(policy: updatePolicy!);
+          }
           if (controller.loading && !controller.sdkReady) {
             return const SplashView();
           }
@@ -170,8 +220,9 @@ class _SplashViewState extends State<SplashView>
                   width: 26,
                   height: 26,
                   child: CircularProgressIndicator(
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(AppTheme.primaryPurple),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryPurple,
+                    ),
                     strokeWidth: 2.5,
                   ),
                 ),

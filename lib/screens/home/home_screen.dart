@@ -6,6 +6,8 @@ import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
 import '../../widgets/glucose_trend_chart.dart';
 import '../onboarding/device_setup_screen.dart';
+import '../wellness/meal_reminders_screen.dart';
+import '../wellness/water_reminders_screen.dart';
 import '../wellness/wellness_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -254,7 +256,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                _WellnessHomeCard(api: controller.api),
+                _ReminderHomeCards(api: controller.api),
                 const SizedBox(height: 24),
 
                 if (isConnected) ...[
@@ -1475,6 +1477,125 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReminderHomeCards extends StatefulWidget {
+  const _ReminderHomeCards({required this.api});
+  final dynamic api;
+  @override
+  State<_ReminderHomeCards> createState() => _ReminderHomeCardsState();
+}
+
+class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
+  Map<String, dynamic>? summary;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await widget.api.getWellnessToday();
+      if (mounted) setState(() => summary = value);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final meals = (summary?['meals'] as List?)?.length ?? 0;
+    final water = (summary?['waterMl'] as num?)?.toInt() ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Daily Wellness',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _card(
+                context,
+                Icons.restaurant_outlined,
+                const Color(0xFFFF3B3B),
+                'Meal reminders',
+                '$meals logged',
+                'Manage meals',
+                MealRemindersScreen(api: widget.api),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _card(
+                context,
+                Icons.water_drop_outlined,
+                const Color(0xFF168DE2),
+                'Water reminders',
+                '$water mL logged',
+                'Manage water',
+                WaterRemindersScreen(api: widget.api),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    IconData icon,
+    Color color,
+    String title,
+    String value,
+    String action,
+    Widget page,
+  ) => Card(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () =>
+          Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: color.withValues(alpha: 0.12),
+              foregroundColor: color,
+              child: Icon(icon, size: 21),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              action,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _WellnessHomeCard extends StatefulWidget {
