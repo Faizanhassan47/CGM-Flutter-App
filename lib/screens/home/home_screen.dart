@@ -6,6 +6,7 @@ import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
 import '../../widgets/glucose_trend_chart.dart';
 import '../onboarding/device_setup_screen.dart';
+import '../wellness/wellness_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -125,10 +126,13 @@ class HomeScreen extends StatelessWidget {
                           color: AppTheme.lightPurpleBg,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: AppTheme.primaryPurple.withValues(alpha: 0.35),
+                            color: AppTheme.primaryPurple.withValues(
+                              alpha: 0.35,
+                            ),
                             width: 1.5,
                           ),
-                          image: controller.profilePictureUrl != null &&
+                          image:
+                              controller.profilePictureUrl != null &&
                                   controller.profilePictureUrl!.isNotEmpty
                               ? DecorationImage(
                                   image: NetworkImage(
@@ -138,7 +142,8 @@ class HomeScreen extends StatelessWidget {
                                 )
                               : null,
                         ),
-                        child: controller.profilePictureUrl == null ||
+                        child:
+                            controller.profilePictureUrl == null ||
                                 controller.profilePictureUrl!.isEmpty
                             ? const Icon(
                                 Icons.person_rounded,
@@ -247,6 +252,9 @@ class HomeScreen extends StatelessWidget {
                     isHigh: mg != null && mg > highT,
                   ),
                 ),
+                const SizedBox(height: 24),
+
+                _WellnessHomeCard(api: controller.api),
                 const SizedBox(height: 24),
 
                 if (isConnected) ...[
@@ -1464,6 +1472,49 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _WellnessHomeCard extends StatefulWidget {
+  const _WellnessHomeCard({required this.api});
+  final dynamic api;
+  @override
+  State<_WellnessHomeCard> createState() => _WellnessHomeCardState();
+}
+
+class _WellnessHomeCardState extends State<_WellnessHomeCard> {
+  Map<String, dynamic>? summary;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final value = await widget.api.getWellnessToday();
+      if (mounted) setState(() => summary = value);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final meals = (summary?['meals'] as List?)?.length ?? 0;
+    final water = (summary?['waterMl'] as num?)?.toInt() ?? 0;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.health_and_safety_outlined),
+        title: const Text('Daily Wellness'),
+        subtitle: Text('$meals meals logged  •  $water mL water'),
+        trailing: TextButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => WellnessScreen(api: widget.api)),
+          ),
+          child: const Text('Open'),
+        ),
       ),
     );
   }

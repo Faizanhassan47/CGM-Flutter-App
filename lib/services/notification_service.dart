@@ -3,6 +3,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 import 'api_service.dart';
 
 /// Top-level background message handler for FCM.
@@ -26,6 +28,8 @@ class NotificationService {
   static const String urgentChannelName = 'CGM Urgent Alerts';
   static const String urgentChannelDesc =
       'High priority urgent glucose alerts and notifications';
+  static const String wellnessChannelId = 'wellness_reminders_channel';
+  static const int wellnessIdStart = 200000;
 
   bool _initialized = false;
   String? _fcmToken;
@@ -52,7 +56,9 @@ class NotificationService {
         provisional: false,
         sound: true,
       );
-      debugPrint('[FCM] User granted permission: ${settings.authorizationStatus}');
+      debugPrint(
+        '[FCM] User granted permission: ${settings.authorizationStatus}',
+      );
 
       // Setup local notifications for Android foreground presentation
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -139,7 +145,9 @@ class NotificationService {
       // Handle initial notification if app was terminated
       final initialMessage = await _fcm.getInitialMessage();
       if (initialMessage != null) {
-        debugPrint('[FCM] App launched from terminated state via: ${initialMessage.data}');
+        debugPrint(
+          '[FCM] App launched from terminated state via: ${initialMessage.data}',
+        );
       }
 
       _initialized = true;
@@ -215,5 +223,122 @@ class NotificationService {
       notificationDetails: details,
       payload: payload,
     );
+  }
+
+  /// Schedules only wellness IDs. Critical CGM notifications use a separate
+  /// channel and are never canceled here.
+  Future<void> scheduleWellness({
+    required Map<String, dynamic> settings,
+    required List<dynamic> schedules,
+  }) async {
+    if (!_initialized) return;
+    final android = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        wellnessChannelId,
+        'Wellness reminders',
+        description: 'Optional meal and hydration reminders',
+        importance: Importance.defaultImportance,
+      ),
+    );
+    for (var id = wellnessIdStart; id < wellnessIdStart + 100; id++) {
+      await _localNotifications.cancel(id: id);
+    }
+    tz.initializeTimeZones();
+    final zone = '${settings['timeZoneId'] ?? 'UTC'}';
+    try {
+      tz.setLocalLocation(tz.getLocation(zone));
+    } catch (_) {
+      tz.setLocalLocation(tz.UTC);
+    }
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        wellnessChannelId,
+        'Wellness reminders',
+        channelDescription: 'Optional meal and hydration reminders',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+    var id = wellnessIdStart;
+    final now = tz.TZDateTime.now(tz.local);
+    bool quiet(int hour) {
+      if (settings['quietHoursEnabled'] != true) return false;
+      final start =
+          int.tryParse(
+            '${settings['quietStart'] ?? '22:00'}'.split(':').first,
+          ) ??
+          22;
+      final end =
+          int.tryParse('${settings['quietEnd'] ?? '07:00'}'.split(':').first) ??
+          7;
+      return start > end
+          ? hour >= start || hour < end
+          : hour >= start && hour < end;
+    }
+
+    for (var day = 0; day < 7 && id < wellnessIdStart + 100; day++) {
+      for (final raw in schedules) {
+        final schedule = raw is Map ? raw : <String, dynamic>{};
+        if (schedule['enabled'] == false) continue;
+        final parts = '${schedule['reminderTime'] ?? ''}'.split(':');
+        if (parts.length != 2) continue;
+        final when = tz.TZDateTime(
+          tz.local,
+          now.year,
+          now.month,
+          now.day + day,
+          int.tryParse(parts[0]) ?? 0,
+          int.tryParse(parts[1]) ?? 0,
+        );
+        if (!when.isAfter(now) ||
+            quiet(when.hour) ||
+            settings['mealEnabled'] != true)
+          continue;
+        await _localNotifications.zonedSchedule(
+          id: id++,
+          title:
+              'Time for ${schedule['customName'] ?? schedule['mealType'] ?? 'your meal'}',
+          body: 'It\'s time for your scheduled meal. You can log it in Circle.',
+          scheduledDate: when,
+          notificationDetails: details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: 'wellness:meal',
+        );
+      }
+      if (settings['waterEnabled'] == true) {
+        final interval =
+            (int.tryParse('${settings['waterIntervalMinutes'] ?? 120}') ?? 120)
+                .clamp(30, 720);
+        for (
+          var minute = 9 * 60;
+          minute <= 21 * 60 && id < wellnessIdStart + 100;
+          minute += interval
+        ) {
+          final when = tz.TZDateTime(
+            tz.local,
+            now.year,
+            now.month,
+            now.day + day,
+            minute ~/ 60,
+            minute % 60,
+          );
+          if (!when.isAfter(now) || quiet(when.hour)) continue;
+          await _localNotifications.zonedSchedule(
+            id: id++,
+            title: 'Hydration reminder',
+            body: 'Optional reminder to log water if you choose.',
+            scheduledDate: when,
+            notificationDetails: details,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            payload: 'wellness:water',
+          );
+        }
+      }
+    }
   }
 }

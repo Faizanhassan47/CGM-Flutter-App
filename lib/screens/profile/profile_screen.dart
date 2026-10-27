@@ -10,6 +10,7 @@ import 'linked_device_screen.dart';
 import 'notification_preferences_screen.dart';
 import 'personal_info_screen.dart';
 import 'privacy_security_dialog.dart';
+import '../wellness/wellness_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.controller});
@@ -145,7 +146,8 @@ class ProfileScreen extends StatelessWidget {
                                 color: AppTheme.primaryPurple,
                                 width: 2,
                               ),
-                              image: controller.profilePictureUrl != null &&
+                              image:
+                                  controller.profilePictureUrl != null &&
                                       controller.profilePictureUrl!.isNotEmpty
                                   ? DecorationImage(
                                       image: NetworkImage(
@@ -155,7 +157,8 @@ class ProfileScreen extends StatelessWidget {
                                     )
                                   : null,
                             ),
-                            child: controller.profilePictureUrl == null ||
+                            child:
+                                controller.profilePictureUrl == null ||
                                     controller.profilePictureUrl!.isEmpty
                                 ? const Icon(
                                     Icons.person_outline_rounded,
@@ -487,6 +490,17 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     _buildSettingsTile(
+                      icon: Icons.health_and_safety_outlined,
+                      title: 'Health & Lifestyle',
+                      subtitle: 'Meals, hydration and reminders',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => WellnessScreen(api: controller.api),
+                        ),
+                      ),
+                    ),
+                    _buildDivider(),
+                    _buildSettingsTile(
                       icon: Icons.person_outline_rounded,
                       title: 'Personal Info',
                       subtitle: 'Update your personal details',
@@ -804,8 +818,6 @@ class ProfileScreen extends StatelessWidget {
       ),
     );
   }
-
- 
 
   void _showTargetRangeDialog(BuildContext context) {
     double localLow = controller.targetLow;
@@ -1137,12 +1149,18 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               ListTile(
-                leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.primaryPurple),
+                leading: const Icon(
+                  Icons.camera_alt_outlined,
+                  color: AppTheme.primaryPurple,
+                ),
                 title: const Text('Take a photo'),
                 onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library_outlined, color: AppTheme.primaryPurple),
+                leading: const Icon(
+                  Icons.photo_library_outlined,
+                  color: AppTheme.primaryPurple,
+                ),
                 title: const Text('Choose from gallery'),
                 onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
               ),
