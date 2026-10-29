@@ -1044,6 +1044,11 @@ class _Core {
       final warmup =
           activeTime != null &&
           frame.measureTime.isBefore(activeTime.add(SdkTuning.warmupDuration));
+      debugPrint(
+        '[CGM WARMUP] wear=$wearId seq=${frame.recordSeq} '
+        'activeTime=$activeTime measurementTime=${frame.measureTime} '
+        'duration=${SdkTuning.warmupDuration.inMinutes}m warmup=$warmup',
+      );
       final valueOk = out.value.isFinite;
       final now = DateTime.now();
       // Device current≈0 hour pipeline Changed to the pocket current feeding algorithm (development version), and the value fed in is out.current；

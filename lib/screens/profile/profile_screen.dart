@@ -10,9 +10,9 @@ import 'linked_device_screen.dart';
 import 'notification_preferences_screen.dart';
 import 'personal_info_screen.dart';
 import 'privacy_security_dialog.dart';
-import '../wellness/wellness_screen.dart';
 import '../wellness/meal_reminders_screen.dart';
 import '../wellness/water_reminders_screen.dart';
+import 'diet_assistant_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key, required this.controller});
@@ -492,6 +492,13 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     
+                    _buildDivider(),
+                    _buildSettingsTile(
+                      icon: Icons.auto_awesome_outlined,
+                      title: 'AI Diet Assistant',
+                      subtitle: 'Personalized guidance from your CGM trends',
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DietAssistantScreen(api: controller.api))),
+                    ),
                     _buildDivider(),
                     _buildSettingsTile(
                       icon: Icons.restaurant_outlined,

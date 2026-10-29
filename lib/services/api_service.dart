@@ -299,6 +299,12 @@ class ApiService {
     return res is Map<String, dynamic> ? res : <String, dynamic>{};
   }
 
+  /// Ask the backend-only CGM diet assistant.
+  Future<String> askDietAssistant(String message) async {
+    final res = await post('api/DietAssistant/chat', {'message': message});
+    return (res is Map ? res['answer'] : null)?.toString() ?? 'No answer was returned.';
+  }
+
   /// Update user profile.
   Future<Map<String, dynamic>> updateProfile({
     required String fullName,
@@ -316,6 +322,8 @@ class ApiService {
     double? nightLowThreshold,
     double? nightHighThreshold,
     bool? nightAlertsEnabled,
+    bool? pushNotificationsEnabled,
+    bool? criticalGlucoseAlertsEnabled,
   }) async {
     final res = await put('api/Profile', {
       'fullName': fullName,
@@ -335,6 +343,10 @@ class ApiService {
       if (nightLowThreshold != null) 'nightLowThreshold': nightLowThreshold,
       if (nightHighThreshold != null) 'nightHighThreshold': nightHighThreshold,
       if (nightAlertsEnabled != null) 'nightAlertsEnabled': nightAlertsEnabled,
+      if (pushNotificationsEnabled != null)
+        'pushNotificationsEnabled': pushNotificationsEnabled,
+      if (criticalGlucoseAlertsEnabled != null)
+        'criticalGlucoseAlertsEnabled': criticalGlucoseAlertsEnabled,
     });
     return res is Map<String, dynamic> ? res : <String, dynamic>{};
   }
@@ -425,7 +437,7 @@ class ApiService {
     final sensor = await startSensor(
       deviceId: deviceId,
       sensorIdentifier: sensorSerial,
-      warmupMinutes: 120,
+      warmupMinutes: 5,
     );
 
     final sensorId = _int(sensor['id']);
@@ -451,6 +463,14 @@ class ApiService {
         : BackendBinding(deviceId: deviceId, sensorId: sensorId);
   }
 
+  Future<void> cacheBinding({
+    required int deviceId,
+    required int sensorId,
+  }) async {
+    await _storage.write(key: 'backend_device_id', value: '$deviceId');
+    await _storage.write(key: 'backend_sensor_id', value: '$sensorId');
+  }
+
   /// Deactivates and deletes the active device and sensor session.
   Future<void> deactivateDevice() async {
     final binding = await storedBinding();
@@ -473,7 +493,7 @@ class ApiService {
   Future<Map<String, dynamic>> startSensor({
     required int deviceId,
     required String sensorIdentifier,
-    int warmupMinutes = 120,
+    int warmupMinutes = 5,
     int lifespanDays = 14,
   }) async {
     final res = await post('api/Sensors/start', {
@@ -797,12 +817,13 @@ class ApiService {
   Future<void> registerPushNotificationToken({
     required String token,
     required String platform,
+    bool enabled = true,
   }) async {
     try {
       await post('api/notification-endpoints', {
         'channel': 'Push',
         'address': token,
-        'enabled': true,
+        'enabled': enabled,
       });
     } catch (e) {
       debugPrint('[API] registerPushNotificationToken warning: $e');

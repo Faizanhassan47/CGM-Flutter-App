@@ -702,7 +702,11 @@ class GlucoseCollectionRunner {
                 '${resyncDelay.inSeconds} Reconnect and run again after seconds'
                 '(No. $_backfillRetries/$_maxBackfillRetries Second-rate)',
           );
-          _scheduleResyncReconnect();
+          // Do not stop and recreate the wear after an incomplete D3
+          // response. That resets activation/warm-up and prevents live 0xB0
+          // readings from becoming uploadable. The periodic backfill sweep
+          // can retry while this session continues real-time collection.
+          _backfillDoneWearId = wearId;
         } else {
           if (owed > 0) {
             DevLog.instance.add(
@@ -889,6 +893,10 @@ class GlucoseCollectionRunner {
   Future<void> _runBackfillSweep(int wearId) {
     return _enqueue(() async {
       if (_runningWearId != wearId || _liveCollector == null) return;
+      // An incomplete D3 response is already marked as handled for this wear.
+      // Do not restart the whole collection cycle: that creates a new wear ID,
+      // resets activation time, and keeps the sensor permanently in warm-up.
+      if (_backfillDoneWearId == wearId) return;
       await _loadSweepState(
         wearId,
       ); // The back-off state spans processes and restarts do not restart the timer.

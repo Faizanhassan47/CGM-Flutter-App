@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../services/notification_service.dart';
 import 'wellness_history_screen.dart';
 
 class MealRemindersScreen extends StatefulWidget {
@@ -37,9 +38,22 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
     }
   }
 
+  Future<void> _reschedule() async {
+    try {
+      final response = await widget.api.getWellnessReminders();
+      final settings = (response['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+      final scheds = (response['schedules'] as List?) ?? schedules;
+      await NotificationService.instance.scheduleWellness(
+        settings: settings,
+        schedules: scheds,
+      );
+    } catch (_) {}
+  }
+
   Future<void> _saveEnabled(bool value) async {
     setState(() => enabled = value);
     await widget.api.updateWellnessReminders({'mealEnabled': value});
+    await _reschedule();
   }
 
   Future<void> _add() async {
@@ -129,6 +143,7 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
       'enabled': true,
     });
     if (mounted) setState(() => schedules.add(row));
+    await _reschedule();
   }
 
   String _displayTime(dynamic value) {
@@ -341,6 +356,8 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
       final index = schedules.indexOf(schedule);
       if (index >= 0) schedules[index] = updated;
     });
+    await _reschedule();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

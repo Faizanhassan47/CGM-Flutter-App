@@ -1,5 +1,6 @@
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/material.dart';
+import '../alerts/alerts_screen.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
@@ -119,41 +120,62 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    GestureDetector(
-                      onTap: () => onSwitchTab(4), // navigate to Profile tab
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: AppTheme.lightPurpleBg,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppTheme.primaryPurple.withValues(
-                              alpha: 0.35,
-                            ),
-                            width: 1.5,
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Alerts',
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    AlertsScreen(controller: controller),
+                              ),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.notifications_none_rounded,
+                            color: AppTheme.darkPurple,
+                            size: 27,
                           ),
-                          image:
-                              controller.profilePictureUrl != null &&
-                                  controller.profilePictureUrl!.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(
-                                    controller.profilePictureUrl!,
-                                  ),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
                         ),
-                        child:
-                            controller.profilePictureUrl == null ||
-                                controller.profilePictureUrl!.isEmpty
-                            ? const Icon(
-                                Icons.person_rounded,
-                                color: AppTheme.primaryPurple,
-                                size: 26,
-                              )
-                            : null,
-                      ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => onSwitchTab(4),
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppTheme.lightPurpleBg,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppTheme.primaryPurple.withValues(
+                                  alpha: 0.35,
+                                ),
+                                width: 1.5,
+                              ),
+                              image:
+                                  controller.profilePictureUrl != null &&
+                                      controller.profilePictureUrl!.isNotEmpty
+                                  ? DecorationImage(
+                                      image: NetworkImage(
+                                        controller.profilePictureUrl!,
+                                      ),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child:
+                                controller.profilePictureUrl == null ||
+                                    controller.profilePictureUrl!.isEmpty
+                                ? const Icon(
+                                    Icons.person_rounded,
+                                    color: AppTheme.primaryPurple,
+                                    size: 26,
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

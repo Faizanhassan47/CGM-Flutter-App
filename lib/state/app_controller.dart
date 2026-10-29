@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -73,6 +75,7 @@ class AppController extends ChangeNotifier {
 
   // Alerts
   List<dynamic> alerts = [];
+  final Set<String> _notifiedAlertIds = <String>{};
 
   StreamSubscription<CgmConnectionState>? _connectionSub;
   StreamSubscription<DeviceStatus>? _statusSub;
@@ -81,6 +84,11 @@ class AppController extends ChangeNotifier {
   StreamSubscription<ProgressEvent>? _progressSub;
   StreamSubscription<SdkErrorEvent>? _errorSub;
   BackendBinding? _binding;
+  DateTime? _lastLocalAlertAt;
+  String? _lastLocalAlertType;
+  Timer? _uploadQueueTimer;
+  bool _uploadQueueFlushing = false;
+  static const _uploadQueueKey = 'glucose_upload_queue_v1';
 
   Future<void> initialize() async {
     loading = true;
@@ -102,7 +110,11 @@ class AppController extends ChangeNotifier {
         await loadOvernightReport();
         await loadActiveDeviceAndSensor();
         unawaited(sendPhoneHardwareLogs());
-        unawaited(NotificationService.instance.initialize(apiService: api));
+        await NotificationService.instance.initialize(
+          apiService: api,
+          pushEnabled: pushNotifications,
+        );
+        await _restoreWellnessReminders();
       } else {
         unawaited(NotificationService.instance.initialize());
       }
@@ -112,7 +124,7 @@ class AppController extends ChangeNotifier {
           logLevel: LogLevel.info,
           foregroundNotice: 'Circle glucose monitoring is active',
           minBatteryMv: 2800,
-          warmupMinutes: 120,
+          warmupMinutes: 5,
         ),
       );
       sdkVersion =
@@ -130,6 +142,46 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> _restoreWellnessReminders() async {
+    try {
+      final response = await api.getWellnessReminders();
+      var settings =
+          (response['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+      final schedules = (response['schedules'] as List?) ?? const [];
+
+      // Reminder times are entered in the user's local phone time. Keep the
+      // server value synchronized with the OS timezone without requesting GPS
+      // or location permissions.
+      try {
+        final deviceTimezone = await FlutterTimezone.getLocalTimezone();
+        final timezoneId = deviceTimezone.identifier;
+        if (timezoneId.isNotEmpty && settings['timeZoneId'] != timezoneId) {
+          final updated = await api.updateWellnessReminders({
+            'timeZoneId': timezoneId,
+          });
+          settings =
+              (updated['settings'] as Map?)?.cast<String, dynamic>() ??
+              settings;
+          debugPrint('[Notifications] Timezone synchronized: $timezoneId');
+        }
+      } catch (error) {
+        debugPrint('[Notifications] Timezone detection failed: $error');
+      }
+
+      await NotificationService.instance.scheduleWellness(
+        settings: settings,
+        schedules: schedules,
+      );
+      debugPrint(
+        '[Notifications] Wellness reminders restored (${schedules.length} meal schedules).',
+      );
+    } catch (error) {
+      debugPrint(
+        '[Notifications] Failed to restore wellness reminders: $error',
+      );
+    }
+  }
+
   Future<void> loadUserProfile() async {
     try {
       final data = await api.getProfile();
@@ -141,7 +193,8 @@ class AppController extends ChangeNotifier {
         phoneNumber = data['phoneNumber']?.toString() ?? phoneNumber;
         dateOfBirth = data['dateOfBirth']?.toString() ?? dateOfBirth;
         gender = data['gender']?.toString() ?? gender;
-        profilePictureUrl = data['profilePictureUrl']?.toString() ?? profilePictureUrl;
+        profilePictureUrl =
+            data['profilePictureUrl']?.toString() ?? profilePictureUrl;
         authProvider = data['authProvider']?.toString() ?? authProvider;
         hasPassword = data['hasPassword'] == true;
         preferredGlucoseUnit =
@@ -172,6 +225,15 @@ class AppController extends ChangeNotifier {
         if (data['nightAlertsEnabled'] != null) {
           nightAlertsEnabled = data['nightAlertsEnabled'] == true;
         }
+        if (data['pushNotificationsEnabled'] != null) {
+          pushNotifications = data['pushNotificationsEnabled'] == true;
+        }
+        if (data['criticalGlucoseAlertsEnabled'] != null) {
+          criticalAlerts = data['criticalGlucoseAlertsEnabled'] == true;
+        }
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('pref_push', pushNotifications);
+        await prefs.setBool('pref_critical', criticalAlerts);
         notifyListeners();
       }
     } catch (_) {}
@@ -183,9 +245,18 @@ class AppController extends ChangeNotifier {
       if (sensorData != null && sensorData.isNotEmpty) {
         activeSensor = sensorData;
         final deviceId = sensorData['deviceId'];
+        final sensorId = sensorData['id'];
         if (deviceId != null) {
           final devIdInt = int.tryParse('$deviceId');
           if (devIdInt != null) {
+            final sensorIdInt = int.tryParse('$sensorId');
+            if (sensorIdInt != null) {
+              _binding = BackendBinding(
+                deviceId: devIdInt,
+                sensorId: sensorIdInt,
+              );
+              await api.cacheBinding(deviceId: devIdInt, sensorId: sensorIdInt);
+            }
             activeDevice = await api.getDevice(devIdInt);
           }
         }
@@ -374,6 +445,26 @@ class AppController extends ChangeNotifier {
       await prefs.setBool('pref_reminders', reminders);
     }
     notifyListeners();
+    await _syncNotificationPrefs();
+  }
+
+  Future<void> _syncNotificationPrefs() async {
+    if (!authenticated) return;
+    try {
+      if (fullName.trim().isNotEmpty) {
+        await api.updateProfile(
+          fullName: fullName,
+          pushNotificationsEnabled: pushNotifications,
+          criticalGlucoseAlertsEnabled: criticalAlerts,
+        );
+      }
+      await NotificationService.instance.initialize(
+        apiService: api,
+        pushEnabled: pushNotifications,
+      );
+    } catch (e) {
+      debugPrint('[AppController] Failed to sync notification prefs: $e');
+    }
   }
 
   Future<void> setDeviceType(String type) async {
@@ -396,7 +487,10 @@ class AppController extends ChangeNotifier {
           loadAlerts(),
           loadReports(),
           sendPhoneHardwareLogs(),
-          NotificationService.instance.initialize(apiService: api),
+          NotificationService.instance.initialize(
+            apiService: api,
+            pushEnabled: pushNotifications,
+          ),
         ]),
       );
     });
@@ -449,7 +543,10 @@ class AppController extends ChangeNotifier {
           loadAlerts(),
           loadReports(),
           sendPhoneHardwareLogs(),
-          NotificationService.instance.initialize(apiService: api),
+          NotificationService.instance.initialize(
+            apiService: api,
+            pushEnabled: pushNotifications,
+          ),
         ]),
       );
     });
@@ -491,7 +588,12 @@ class AppController extends ChangeNotifier {
       unawaited(loadUserProfile());
       unawaited(loadFamily());
       unawaited(sendPhoneHardwareLogs());
-      unawaited(NotificationService.instance.initialize(apiService: api));
+      unawaited(
+        NotificationService.instance.initialize(
+          apiService: api,
+          pushEnabled: pushNotifications,
+        ),
+      );
     });
   }
 
@@ -663,11 +765,60 @@ class AppController extends ChangeNotifier {
 
   Future<void> loadAlerts() async {
     try {
-      alerts = await api.getAlerts();
+      final fetchedAlerts = await api.getAlerts();
+
+      if (alerts.isNotEmpty && fetchedAlerts.isNotEmpty) {
+        final existingIds = alerts
+            .map((a) => (a['Id'] ?? a['id'])?.toString())
+            .whereType<String>()
+            .toSet();
+
+        for (final item in fetchedAlerts) {
+          final idStr = (item['Id'] ?? item['id'])?.toString();
+          final isRead = item['isRead'] == 1 || item['isRead'] == true;
+          if (idStr != null &&
+              !existingIds.contains(idStr) &&
+              !_notifiedAlertIds.contains(idStr) &&
+              !isRead) {
+            _notifiedAlertIds.add(idStr);
+            final title =
+                item['title'] ?? item['Title'] ?? 'Glucose Notification';
+            final body =
+                item['message'] ??
+                item['Message'] ??
+                'New glucose alert received';
+            unawaited(
+              NotificationService.instance.showLocalAlert(
+                title: title.toString(),
+                body: body.toString(),
+                payload: 'alert:$idStr',
+              ),
+            );
+          }
+        }
+      } else if (fetchedAlerts.isNotEmpty) {
+        // Pre-populate already existing alert IDs on first boot so we don't spam notifications
+        for (final item in fetchedAlerts) {
+          final idStr = (item['Id'] ?? item['id'])?.toString();
+          if (idStr != null) {
+            _notifiedAlertIds.add(idStr);
+          }
+        }
+      }
+
+      alerts = fetchedAlerts;
       notifyListeners();
     } catch (e) {
       debugPrint('[AppController] Failed to load alerts: $e');
     }
+  }
+
+  Future<void> sendTestLocalNotification() async {
+    await NotificationService.instance.showLocalAlert(
+      title: 'CGM Test Alert',
+      body: 'Your notification alerts are working properly!',
+      payload: 'test:notification',
+    );
   }
 
   Future<void> markAlertAsRead(int alertId) async {
@@ -711,7 +862,7 @@ class AppController extends ChangeNotifier {
             logLevel: LogLevel.info,
             foregroundNotice: 'Circle glucose monitoring is active',
             minBatteryMv: 2800,
-            warmupMinutes: 120,
+            warmupMinutes: 5,
           ),
         );
         sdkReady = true;
@@ -736,7 +887,7 @@ class AppController extends ChangeNotifier {
             logLevel: LogLevel.info,
             foregroundNotice: 'Circle glucose monitoring is active',
             minBatteryMv: 2800,
-            warmupMinutes: 120,
+            warmupMinutes: 5,
           ),
         );
         sdkReady = true;
@@ -822,8 +973,23 @@ class AppController extends ChangeNotifier {
 
   void _attachSdkStreams() {
     _connectionSub ??= CgmSdk.connectionState.listen((value) {
+      final previous = connection;
       connection = value;
       notifyListeners();
+      if (value == CgmConnectionState.connected) {
+        unawaited(_flushUploadQueue());
+      }
+      if (sensorAlerts &&
+          previous == CgmConnectionState.connected &&
+          value != CgmConnectionState.connected) {
+        unawaited(
+          NotificationService.instance.showLocalAlert(
+            title: 'Sensor disconnected',
+            body: 'Circle lost the CGM connection. Open the app to reconnect.',
+            payload: 'sensor:disconnected',
+          ),
+        );
+      }
     });
     _statusSub ??= CgmSdk.deviceStatus.listen((value) {
       deviceStatus = value;
@@ -863,18 +1029,67 @@ class AppController extends ChangeNotifier {
           ..sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
       }
       notifyListeners();
+      unawaited(_maybeLocalGlucoseAlert(sample));
+      // Live glucose samples arrive on this stream independently of the
+      // historical/watch stream. Upload them immediately so a live reading
+      // cannot remain visible only on the device.
+      unawaited(_upload([sample]));
     });
+  }
+
+  Future<void> _maybeLocalGlucoseAlert(GlucoseSample sample) async {
+    if (!criticalAlerts) return;
+    if (sample.value == null || sample.warmup || sample.abnormal) return;
+    final mgdl = sample.value! * 18.0182;
+    String? type;
+    String? title;
+    if (mgdl <= urgentLowThreshold) {
+      type = 'UrgentLow';
+      title = 'Critical urgent low glucose';
+    } else if (mgdl >= urgentHighThreshold) {
+      type = 'UrgentHigh';
+      title = 'Critical urgent high glucose';
+    } else {
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastLocalAlertType == type &&
+        _lastLocalAlertAt != null &&
+        now.difference(_lastLocalAlertAt!) < const Duration(minutes: 10)) {
+      return;
+    }
+    _lastLocalAlertType = type;
+    _lastLocalAlertAt = now;
+    await NotificationService.instance.showLocalAlert(
+      title: title!,
+      body: '${mgdl.toStringAsFixed(0)} mg/dL is outside your urgent range.',
+      payload: 'glucose:$type',
+    );
+    unawaited(loadAlerts());
   }
 
   Future<void> _upload(List<GlucoseSample> samples) async {
     // Cached SDK samples may be emitted during startup even when no sensor is
     // currently connected. Do not call the monitoring API in that state.
-    if (!authenticated || connection != CgmConnectionState.connected) return;
+    if (!authenticated) {
+      debugPrint('[GLUCOSE-UPLOAD] skipped: not authenticated');
+      return;
+    }
+    if (connection != CgmConnectionState.connected) {
+      debugPrint('[GLUCOSE-UPLOAD] skipped: connection=$connection');
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     final currentWear = wear ?? await CgmSdk.currentWear();
-    if (currentWear == null) return;
+    if (currentWear == null) {
+      debugPrint('[GLUCOSE-UPLOAD] skipped: no current wear');
+      return;
+    }
     final binding = _binding ?? await api.storedBinding();
-    if (binding == null) return;
+    if (binding == null) {
+      debugPrint('[GLUCOSE-UPLOAD] skipped: no backend sensor binding');
+      return;
+    }
     final key = 'uploaded_seq_${currentWear.wearId}';
     final lastSeq = prefs.getInt(key) ?? -1;
     final pending =
@@ -882,36 +1097,121 @@ class AppController extends ChangeNotifier {
             .where((x) => x.wearId == currentWear.wearId && x.seq > lastSeq)
             .toList()
           ..sort((a, b) => a.seq.compareTo(b.seq));
+    debugPrint(
+      '[GLUCOSE-UPLOAD] wear=${currentWear.wearId} sensor=${binding.sensorId} '
+      'input=${samples.length} pending=${pending.length} lastSeq=$lastSeq',
+    );
     for (var offset = 0; offset < pending.length; offset += 500) {
       // The sensor may disconnect while a multi-batch upload is in progress.
       if (connection != CgmConnectionState.connected) break;
       final batch = pending.skip(offset).take(500).toList();
+      for (final sample in batch) {
+        debugPrint(
+          '[CGM SAMPLE] seq=${sample.seq} '
+          'warmup=${sample.warmup} '
+          'abnormal=${sample.abnormal} '
+          'value=${sample.value}',
+        );
+      }
       final valid = batch
           .where((x) => x.value != null && !x.warmup && !x.abnormal)
           .toList();
-      try {
-        await api.uploadGlucose(
-          binding.sensorId,
-          valid.map((x) {
-            return {
-              'sensorId': binding.sensorId,
-              'glucoseValue': double.parse(
-                (x.value! * 18.0182).toStringAsFixed(1),
-              ),
-              'measurementTime': x.measuredAt.toUtc().toIso8601String(),
-              if (x.voltage != null) 'batteryVoltageMv': x.voltage!.round(),
-              if (x.temperature != null) 'deviceTemperatureC': x.temperature,
-              if (x.rawCurrent != null) 'we1CurrentNa': x.rawCurrent,
-              'sequenceNumber': x.seq & 0xffff,
-            };
-          }).toList(),
+      debugPrint(
+        '[GLUCOSE-UPLOAD] batch=${batch.length} valid=${valid.length} '
+        'firstSeq=${batch.first.seq} lastSeq=${batch.last.seq} '
+        'uploadAttempted=${valid.isNotEmpty}',
+      );
+      if (valid.isEmpty) {
+        debugPrint(
+          '[CGM SYNC] No valid readings; uploaded sequence unchanged.',
         );
-        await prefs.setInt(key, batch.last.seq);
+        continue;
+      }
+      try {
+        await _enqueueUploadRows(binding.sensorId, valid);
       } catch (_) {
         // If device is currently offline, skip updating last uploaded seq.
         // It will automatically retry and upload immediately once internet connectivity returns!
         break;
       }
+    }
+  }
+
+  Future<void> _enqueueUploadRows(
+    int sensorId,
+    List<GlucoseSample> samples,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing =
+        (jsonDecode(prefs.getString(_uploadQueueKey) ?? '[]') as List)
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+    final keys = existing
+        .map((row) => '${row['sensorId']}:${row['measurementTime']}')
+        .toSet();
+    for (final sample in samples) {
+      final row = <String, dynamic>{
+        'sensorId': sensorId,
+        'glucoseValue': double.parse(
+          (sample.value! * 18.0182).toStringAsFixed(1),
+        ),
+        'measurementTime': sample.measuredAt.toUtc().toIso8601String(),
+        if (sample.voltage != null) 'batteryVoltageMv': sample.voltage!.round(),
+        if (sample.temperature != null)
+          'deviceTemperatureC': sample.temperature,
+        if (sample.rawCurrent != null) 'we1CurrentNa': sample.rawCurrent,
+        'sequenceNumber': sample.seq & 0xffff,
+      };
+      final key = '$sensorId:${row['measurementTime']}';
+      if (keys.add(key)) existing.add(row);
+    }
+    await prefs.setString(_uploadQueueKey, jsonEncode(existing));
+    debugPrint('[GLUCOSE-UPLOAD] queued=${existing.length}');
+    if (existing.length >= 5) {
+      await _flushUploadQueue();
+    } else {
+      _uploadQueueTimer ??= Timer(const Duration(minutes: 5), () {
+        _uploadQueueTimer = null;
+        unawaited(_flushUploadQueue());
+      });
+    }
+  }
+
+  Future<void> _flushUploadQueue() async {
+    if (_uploadQueueFlushing ||
+        !authenticated ||
+        connection != CgmConnectionState.connected)
+      return;
+    _uploadQueueFlushing = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final queued =
+          (jsonDecode(prefs.getString(_uploadQueueKey) ?? '[]') as List)
+              .whereType<Map>()
+              .map((row) => Map<String, dynamic>.from(row))
+              .toList();
+      final bySensor = <int, List<Map<String, dynamic>>>{};
+      for (final row in queued) {
+        bySensor.putIfAbsent(row['sensorId'] as int, () => []).add(row);
+      }
+      for (final entry in bySensor.entries) {
+        final batch = entry.value.take(500).toList();
+        await api.uploadGlucose(entry.key, batch);
+        queued.removeWhere((row) => batch.contains(row));
+      }
+      await prefs.setString(_uploadQueueKey, jsonEncode(queued));
+      if (queued.isNotEmpty) {
+        _uploadQueueTimer ??= Timer(const Duration(minutes: 5), () {
+          _uploadQueueTimer = null;
+          unawaited(_flushUploadQueue());
+        });
+      }
+      if (queued.isEmpty) unawaited(loadAlerts());
+    } catch (_) {
+      debugPrint('[GLUCOSE-UPLOAD] queue flush failed; readings retained');
+    } finally {
+      _uploadQueueFlushing = false;
     }
   }
 
@@ -937,6 +1237,7 @@ class AppController extends ChangeNotifier {
     _watchSub?.cancel();
     _progressSub?.cancel();
     _errorSub?.cancel();
+    _glucoseSub?.cancel();
     super.dispose();
   }
 }

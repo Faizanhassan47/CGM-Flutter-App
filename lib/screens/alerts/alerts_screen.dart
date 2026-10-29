@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
-import '../profile/notification_preferences_screen.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key, required this.controller});
@@ -15,6 +14,16 @@ class AlertsScreen extends StatefulWidget {
 class _AlertsScreenState extends State<AlertsScreen> {
   String selectedFilter = 'All'; // 'All', 'Critical', 'Warning'
 
+  bool _isCritical(dynamic rawAlert) {
+    if (rawAlert is! Map) return false;
+    final alert = Map<String, dynamic>.from(rawAlert);
+    final flag = alert['isCritical'] ?? alert['IsCritical'];
+    final severity = (alert['severity'] ?? alert['Severity'] ?? '')
+        .toString()
+        .toLowerCase();
+    return flag == true || flag == 1 || flag == '1' || severity == 'critical';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -25,11 +34,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
   Widget build(BuildContext context) {
     final rawAlerts = widget.controller.alerts;
     final alerts = rawAlerts.where((a) {
+      final critical = _isCritical(a);
       if (selectedFilter == 'Critical') {
-        return a['isCritical'] == true || a['Severity'] == 'Critical';
+        return critical;
       }
       if (selectedFilter == 'Warning') {
-        return a['isCritical'] != true && a['Severity'] != 'Critical';
+        return !critical;
       }
       return true;
     }).toList();
@@ -55,21 +65,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       letterSpacing: -0.5,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.settings_outlined,
-                      color: AppTheme.primaryPurple,
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => NotificationPreferencesScreen(
-                            controller: widget.controller,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                
                 ],
               ),
               const SizedBox(height: 16),
@@ -154,8 +150,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 )
               else
                 ...alerts.map((a) {
-                  final isCritical =
-                      a['isCritical'] == true || a['Severity'] == 'Critical';
+                  final isCritical = _isCritical(a);
                   final title =
                       a['title'] ?? a['Title'] ?? 'Glucose Notification';
                   final msg =

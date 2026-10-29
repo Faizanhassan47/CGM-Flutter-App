@@ -20,7 +20,10 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     'quietHoursEnabled': true,
     'quietStart': '22:00',
     'quietEnd': '07:00',
-    'timeZoneId': 'UTC',
+    // Reminder times are entered as local phone times. Pakistan is the
+    // current supported deployment timezone; users can change this when
+    // timezone selection is added to the settings UI.
+    'timeZoneId': 'Asia/Karachi',
   };
   List<dynamic> schedules = [];
   bool loading = true, saving = false;

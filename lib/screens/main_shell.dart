@@ -38,10 +38,7 @@ class _MainShellState extends State<MainShell> {
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
         transitionBuilder: (child, animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+          return FadeTransition(opacity: animation, child: child);
         },
         child: KeyedSubtree(
           key: ValueKey<int>(currentIndex),
@@ -56,8 +53,8 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         child: BottomNavigationBar(
-          currentIndex: currentIndex,
-          onTap: _onSwitchTab,
+          currentIndex: currentIndex == 4 ? 3 : currentIndex,
+          onTap: (index) => _onSwitchTab(index == 3 ? 4 : index),
           type: BottomNavigationBarType.fixed,
           backgroundColor: AppColors.surface,
           elevation: 0,
@@ -87,11 +84,6 @@ class _MainShellState extends State<MainShell> {
               icon: Icon(Icons.article_outlined),
               activeIcon: Icon(Icons.article_rounded),
               label: 'Reports',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.notifications_none_rounded),
-              activeIcon: Icon(Icons.notifications_rounded),
-              label: 'Alerts',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline_rounded),
