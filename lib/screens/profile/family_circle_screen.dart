@@ -308,268 +308,269 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: FutureBuilder<Map<String, dynamic>>(
-            future: widget.controller.getFamilyMemberReport(
-              int.parse('$memberUserId'),
-            ),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SizedBox(
-                  height: 250,
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (snapshot.hasError || !snapshot.hasData) {
-                return SizedBox(
-                  height: 220,
-                  child: Center(
-                    child: Text(
-                      'Could not load report for $name.\n${snapshot.error ?? ''}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppTheme.dangerRed),
-                    ),
+          child: SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * 0.86,
+              ),
+              child: SingleChildScrollView(
+                child: FutureBuilder<Map<String, dynamic>>(
+                  future: widget.controller.getFamilyMemberReport(
+                    int.parse('$memberUserId'),
                   ),
-                );
-              }
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SizedBox(
+                        height: 250,
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return SizedBox(
+                        height: 220,
+                        child: Center(
+                          child: Text(
+                            'Could not load report for $name.\n${snapshot.error ?? ''}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: AppTheme.dangerRed),
+                          ),
+                        ),
+                      );
+                    }
 
-              final rep = snapshot.data!;
-              final readingCount = rep['readingCount'] ?? 0;
-              final avgGlucose = rep['averageGlucose']?.toString() ?? '--';
-              final tir = rep['timeInRangePercentage']?.toString() ?? '--';
-              final readings = (rep['readings'] as List?) ?? [];
+                    final rep = snapshot.data!;
+                    final readingCount = rep['readingCount'] ?? 0;
+                    final avgGlucose =
+                        rep['averageGlucose']?.toString() ?? '--';
+                    final tir =
+                        rep['timeInRangePercentage']?.toString() ?? '--';
+                    final readings = (rep['readings'] as List?) ?? [];
 
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$name\'s Glucose Report',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.darkPurple,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            'Past 7-day summary & readings',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close,
-                          color: AppTheme.textMuted,
-                        ),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          padding: AppInsets.all14,
-                          decoration: BoxDecoration(
-                            color: AppPalette.hexFFF7F4FB,
-                            borderRadius: AppRadii.r14,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Avg Glucose',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$avgGlucose mg/dL',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.primaryPurple,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          padding: AppInsets.all14,
-                          decoration: BoxDecoration(
-                            color: AppPalette.hexFFF1FBF4,
-                            borderRadius: AppRadii.r14,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Time in Range',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$tir%',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.successGreen,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Container(
-                          padding: AppInsets.all14,
-                          decoration: BoxDecoration(
-                            color: AppPalette.hexFFF0F7FF,
-                            borderRadius: AppRadii.r14,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Total Readings',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$readingCount',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppPalette.hexFF0077B6,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Recent Measurement History',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.darkPurple,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (readings.isEmpty)
-                    Container(
-                      padding: AppInsets.all20,
-                      alignment: Alignment.center,
-                      child: const Text(
-                        'No recent readings found for this member.',
-                        style: TextStyle(color: AppTheme.textMuted),
-                      ),
-                    )
-                  else
-                    SizedBox(
-                      height: 180,
-                      child: ListView.separated(
-                        itemCount: readings.length > 15 ? 15 : readings.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (c, idx) {
-                          final r = readings[readings.length - 1 - idx];
-                          final val = r['GlucoseValue'] ?? r['glucoseValue'];
-                          final time =
-                              (r['MeasurementTime'] ?? r['measurementTime'])
-                                  ?.toString()
-                                  .split('T')
-                                  .last
-                                  .split('.')
-                                  .first ??
-                              '';
-                          final date =
-                              (r['MeasurementTime'] ?? r['measurementTime'])
-                                  ?.toString()
-                                  .split('T')
-                                  .first ??
-                              '';
-                          final numVal = double.tryParse('$val') ?? 0;
-                          final isHigh = numVal > 180;
-                          final isLow = numVal < 70;
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '$date  $time',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.textMuted,
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '$name\'s Glucose Report',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.darkPurple,
+                                    ),
                                   ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'Past 7-day summary & readings',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: AppTheme.textMuted,
+                              ),
+                              onPressed: () => Navigator.of(ctx).pop(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final columns = constraints.maxWidth < 390 ? 2 : 3;
+                            final gap = 12.0;
+                            final width =
+                                (constraints.maxWidth - (columns - 1) * gap) /
+                                columns;
+                            Widget metric(
+                              String label,
+                              String value,
+                              Color color,
+                              Color background,
+                            ) => SizedBox(
+                              width: width,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: background,
+                                  borderRadius: AppRadii.r14,
                                 ),
-                                Row(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      '$val mg/dL',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: isHigh
-                                            ? AppTheme.warningOrange
-                                            : isLow
-                                            ? AppTheme.dangerRed
-                                            : AppTheme.successGreen,
+                                      label,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.textMuted,
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
-                                    Icon(
-                                      isHigh
-                                          ? Icons.arrow_upward
-                                          : isLow
-                                          ? Icons.arrow_downward
-                                          : Icons.check_circle_outline,
-                                      size: 15,
-                                      color: isHigh
-                                          ? AppTheme.warningOrange
-                                          : isLow
-                                          ? AppTheme.dangerRed
-                                          : AppTheme.successGreen,
+                                    const SizedBox(height: 4),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        value,
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800,
+                                          color: color,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
+                              ),
+                            );
+                            return Wrap(
+                              spacing: gap,
+                              runSpacing: gap,
+                              children: [
+                                metric(
+                                  'Avg Glucose',
+                                  '$avgGlucose mg/dL',
+                                  AppTheme.primaryPurple,
+                                  AppPalette.hexFFF7F4FB,
+                                ),
+                                metric(
+                                  'Time in Range',
+                                  '$tir%',
+                                  AppTheme.successGreen,
+                                  AppPalette.hexFFF1FBF4,
+                                ),
+                                metric(
+                                  'Total Readings',
+                                  '$readingCount',
+                                  AppPalette.hexFF0077B6,
+                                  AppPalette.hexFFF0F7FF,
+                                ),
                               ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Recent Measurement History',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.darkPurple,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (readings.isEmpty)
+                          Container(
+                            padding: AppInsets.all20,
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'No recent readings found for this member.',
+                              style: TextStyle(color: AppTheme.textMuted),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                ],
-              );
-            },
+                          )
+                        else
+                          SizedBox(
+                            height: 180,
+                            child: ListView.separated(
+                              itemCount: readings.length > 15
+                                  ? 15
+                                  : readings.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (c, idx) {
+                                final r = readings[readings.length - 1 - idx];
+                                final val =
+                                    r['GlucoseValue'] ?? r['glucoseValue'];
+                                final time =
+                                    (r['MeasurementTime'] ??
+                                            r['measurementTime'])
+                                        ?.toString()
+                                        .split('T')
+                                        .last
+                                        .split('.')
+                                        .first ??
+                                    '';
+                                final date =
+                                    (r['MeasurementTime'] ??
+                                            r['measurementTime'])
+                                        ?.toString()
+                                        .split('T')
+                                        .first ??
+                                    '';
+                                final numVal = double.tryParse('$val') ?? 0;
+                                final isHigh = numVal > 180;
+                                final isLow = numVal < 70;
+
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        '$date  $time',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppTheme.textMuted,
+                                        ),
+                                      ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '$val mg/dL',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: isHigh
+                                                  ? AppTheme.warningOrange
+                                                  : isLow
+                                                  ? AppTheme.dangerRed
+                                                  : AppTheme.successGreen,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Icon(
+                                            isHigh
+                                                ? Icons.arrow_upward
+                                                : isLow
+                                                ? Icons.arrow_downward
+                                                : Icons.check_circle_outline,
+                                            size: 15,
+                                            color: isHigh
+                                                ? AppTheme.warningOrange
+                                                : isLow
+                                                ? AppTheme.dangerRed
+                                                : AppTheme.successGreen,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
           ),
         );
       },
@@ -1079,25 +1080,30 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                             ],
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isOwner
-                                ? AppPalette.hexFFF3EDF9
-                                : AppPalette.hexFFE8F5E9,
-                            borderRadius: AppRadii.r8,
-                          ),
-                          child: Text(
-                            role,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 92),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
                               color: isOwner
-                                  ? AppTheme.primaryPurple
-                                  : AppTheme.successGreen,
+                                  ? AppPalette.hexFFF3EDF9
+                                  : AppPalette.hexFFE8F5E9,
+                              borderRadius: AppRadii.r8,
+                            ),
+                            child: Text(
+                              role,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isOwner
+                                    ? AppTheme.primaryPurple
+                                    : AppTheme.successGreen,
+                              ),
                             ),
                           ),
                         ),
@@ -1114,7 +1120,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
+                              horizontal: 8,
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
@@ -1127,7 +1133,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                 const Text(
                                   'Current Glucose',
                                   style: TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 9.5,
                                     color: AppTheme.textMuted,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1140,7 +1146,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                           ? '$currentGlucose'
                                           : '--',
                                       style: TextStyle(
-                                        fontSize: 16,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.w800,
                                         color: currentGlucose == null
                                             ? AppTheme.textMuted
@@ -1158,7 +1164,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                     const Text(
                                       'mg/dL',
                                       style: TextStyle(
-                                        fontSize: 10.5,
+                                        fontSize: 9.5,
                                         color: AppTheme.textMuted,
                                       ),
                                     ),
@@ -1174,7 +1180,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
+                              horizontal: 8,
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
@@ -1187,7 +1193,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                 const Text(
                                   'Sensor Lifespan',
                                   style: TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 9.5,
                                     color: AppTheme.textMuted,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1207,7 +1213,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          fontSize: 12,
+                                          fontSize: 11,
                                           fontWeight: FontWeight.w700,
                                           color: AppTheme.darkPurple,
                                         ),
@@ -1225,7 +1231,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
+                              horizontal: 8,
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
@@ -1238,7 +1244,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                 const Text(
                                   'Sensor Battery',
                                   style: TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 9.5,
                                     color: AppTheme.textMuted,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1255,7 +1261,7 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                                     Text(
                                       batteryDisplay,
                                       style: const TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                         color: AppTheme.darkPurple,
                                       ),
@@ -1272,7 +1278,11 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                     const SizedBox(height: 12),
 
                     // Actions Row: View Report, Alerts Toggle (Admin), Remove (Admin)
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
                         OutlinedButton.icon(
                           onPressed: () => _onViewMemberReport(m),
@@ -1302,7 +1312,6 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                             ),
                           ),
                         ),
-                        const Spacer(),
                         if (isUserAdminOrOwner && !isOwner) ...[
                           IconButton(
                             icon: Icon(

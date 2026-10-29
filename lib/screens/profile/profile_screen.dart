@@ -492,13 +492,13 @@ class ProfileScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      icon: Icons.auto_awesome_outlined,
-                      title: 'AI Diet Assistant',
-                      subtitle: 'Personalized guidance from your CGM trends',
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DietAssistantScreen(api: controller.api))),
-                    ),
+                //  _  _//buildDivider(),
+                //     _buildSettingsTile(
+                //       icon: Icons.auto_awesome_outlined,
+                //       title: 'AI Diet Assistant',
+                //       subtitle: 'Personalized guidance from your CGM trends',
+                //       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DietAssistantScreen(api: controller.api))),
+                //     ),
                     _buildDivider(),
                     _buildSettingsTile(
                       icon: Icons.restaurant_outlined,

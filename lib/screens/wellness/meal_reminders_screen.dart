@@ -41,7 +41,8 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
   Future<void> _reschedule() async {
     try {
       final response = await widget.api.getWellnessReminders();
-      final settings = (response['settings'] as Map?)?.cast<String, dynamic>() ?? {};
+      final settings =
+          (response['settings'] as Map?)?.cast<String, dynamic>() ?? {};
       final scheds = (response['schedules'] as List?) ?? schedules;
       await NotificationService.instance.scheduleWellness(
         settings: settings,
@@ -314,6 +315,12 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            IconButton(
+              tooltip: 'Delete reminder',
+              icon: const Icon(Icons.delete_outline, size: 20),
+              color: Colors.redAccent,
+              onPressed: () => _deleteSchedule(schedule),
+            ),
             const Icon(Icons.edit_outlined, size: 18, color: Colors.black38),
             const SizedBox(width: 8),
             Icon(
@@ -328,6 +335,39 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _deleteSchedule(dynamic schedule) async {
+    final name = '${schedule['customName'] ?? schedule['mealType'] ?? 'Meal'}';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete reminder?'),
+        content: Text('Remove the $name reminder from your schedule?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final id = (schedule['id'] as num?)?.toInt();
+    if (id == null) return;
+    await widget.api.deleteMealReminderSchedule(id);
+    if (!mounted) return;
+    setState(() => schedules.remove(schedule));
+    await _reschedule();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Reminder deleted')));
   }
 
   Future<void> _editTime(dynamic schedule) async {

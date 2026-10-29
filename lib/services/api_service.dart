@@ -302,7 +302,8 @@ class ApiService {
   /// Ask the backend-only CGM diet assistant.
   Future<String> askDietAssistant(String message) async {
     final res = await post('api/DietAssistant/chat', {'message': message});
-    return (res is Map ? res['answer'] : null)?.toString() ?? 'No answer was returned.';
+    return (res is Map ? res['answer'] : null)?.toString() ??
+        'No answer was returned.';
   }
 
   /// Update user profile.
@@ -868,6 +869,8 @@ class ApiService {
   ) async => _map(
     await _send('PATCH', 'api/wellness/reminder-schedules/$id', body: schedule),
   );
+  Future<void> deleteMealReminderSchedule(int id) async =>
+      delete('api/wellness/reminder-schedules/$id');
 
   Future<Map<String, dynamic>> getWellnessToday({
     String? startUtc,
