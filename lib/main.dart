@@ -2,10 +2,12 @@ import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/app_theme.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding/patient_profile_setup_screen.dart';
+import 'screens/onboarding/welcome_screen.dart';
 import 'services/api_service.dart';
 import 'services/notification_service.dart';
 import 'services/app_update_service.dart';
@@ -87,12 +89,22 @@ class CircleApp extends StatefulWidget {
 class _CircleAppState extends State<CircleApp> {
   late final AppController controller = AppController(ApiService());
   AppUpdatePolicy? updatePolicy;
+  bool? _welcomeSeen;
 
   @override
   void initState() {
     super.initState();
     controller.initialize();
     _checkUpdates();
+    SharedPreferences.getInstance().then((prefs) {
+      if (mounted) setState(() => _welcomeSeen = prefs.getBool('circle_welcome_seen') ?? false);
+    });
+  }
+
+  Future<void> _finishWelcome() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('circle_welcome_seen', true);
+    if (mounted) setState(() => _welcomeSeen = true);
   }
 
   Future<void> _checkUpdates() async {
@@ -139,7 +151,14 @@ class _CircleAppState extends State<CircleApp> {
     return MaterialApp(
       title: 'Circle',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.themeData,
+      theme: AppTheme.themeData.copyWith(
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: _SoftPageTransition(),
+            TargetPlatform.iOS: _SoftPageTransition(),
+          },
+        ),
+      ),
       home: AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
@@ -150,6 +169,8 @@ class _CircleAppState extends State<CircleApp> {
             return const SplashView();
           }
           if (!controller.authenticated) {
+            if (_welcomeSeen == null) return const SplashView();
+            if (_welcomeSeen == false) return WelcomeScreen(onDone: _finishWelcome);
             return LoginScreen(controller: controller);
           }
           if (!controller.profileCompleted && controller.wear == null) {
@@ -166,6 +187,28 @@ class _CircleAppState extends State<CircleApp> {
     controller.dispose();
     CgmSdk.dispose();
     super.dispose();
+  }
+}
+
+class _SoftPageTransition extends PageTransitionsBuilder {
+  const _SoftPageTransition();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: const Offset(0.04, 0), end: Offset.zero).animate(curved),
+        child: child,
+      ),
+    );
   }
 }
 

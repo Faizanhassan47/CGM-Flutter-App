@@ -58,11 +58,11 @@ class _GlucoseTrendCardState extends State<GlucoseTrendCard> {
         : ((inTargetCount / filtered.length) * 100).round();
 
     return Container(
-      padding: AppInsets.all20,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: AppRadii.r24,
-        border: Border.all(color: AppPalette.hexFFEFEBF6, width: 1.2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.surfaceBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,11 +75,11 @@ class _GlucoseTrendCardState extends State<GlucoseTrendCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'Glucose Trend & Corridor',
+                      'Trend',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.darkPurple,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                     SizedBox(height: 4),

@@ -75,6 +75,8 @@ class AppController extends ChangeNotifier {
 
   // Alerts
   List<dynamic> alerts = [];
+  final List<Map<String, dynamic>> _localGlucoseAlerts = [];
+  DateTime? _alertsClearedAt;
   final Set<String> _notifiedAlertIds = <String>{};
 
   StreamSubscription<CgmConnectionState>? _connectionSub;
@@ -97,6 +99,8 @@ class AppController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       pushNotifications = prefs.getBool('pref_push') ?? true;
       criticalAlerts = prefs.getBool('pref_critical') ?? true;
+      final clearedRaw = prefs.getString('alerts_cleared_at');
+      _alertsClearedAt = clearedRaw == null ? null : DateTime.tryParse(clearedRaw);
       sensorAlerts = prefs.getBool('pref_sensor_alerts') ?? true;
       reportReminders = prefs.getBool('pref_reminders') ?? true;
       selectedDeviceType = prefs.getString('pref_device_type') ?? 'Disposable';
@@ -806,7 +810,17 @@ class AppController extends ChangeNotifier {
         }
       }
 
-      alerts = fetchedAlerts;
+      alerts = fetchedAlerts.where((item) {
+        final id = '${item['id'] ?? item['Id'] ?? ''}';
+        if (id.startsWith('meal:') || id.startsWith('water:')) return false;
+        final clearedAt = _alertsClearedAt;
+        if (clearedAt == null) return true;
+        final raw = item['timestamp'] ?? item['AlertTime'] ?? item['alertTime'];
+        final when = DateTime.tryParse('$raw');
+        if (when == null) return false;
+        return when.toUtc().isAfter(clearedAt);
+      }).toList();
+      alerts = [..._localGlucoseAlerts, ...alerts];
       notifyListeners();
     } catch (e) {
       debugPrint('[AppController] Failed to load alerts: $e');
@@ -819,6 +833,21 @@ class AppController extends ChangeNotifier {
       body: 'Your notification alerts are working properly!',
       payload: 'test:notification',
     );
+  }
+
+  Future<void> clearAlertHistory() async {
+    try {
+      await api.clearAlertHistory();
+    } catch (e) {
+      debugPrint('[AppController] Clear alert history API failed: $e');
+    }
+    final clearedAt = DateTime.now().toUtc();
+    _alertsClearedAt = clearedAt;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('alerts_cleared_at', clearedAt.toIso8601String());
+    alerts = [];
+    _localGlucoseAlerts.clear();
+    notifyListeners();
   }
 
   Future<void> markAlertAsRead(int alertId) async {
@@ -1060,12 +1089,22 @@ class AppController extends ChangeNotifier {
     }
     _lastLocalAlertType = type;
     _lastLocalAlertAt = now;
+    final body = '${mgdl.toStringAsFixed(0)} mg/dL is outside your urgent range.';
     await NotificationService.instance.showLocalAlert(
       title: title!,
-      body: '${mgdl.toStringAsFixed(0)} mg/dL is outside your urgent range.',
+      body: body,
       payload: 'glucose:$type',
     );
-    unawaited(loadAlerts());
+    _localGlucoseAlerts.insert(0, {
+      'id': 'glucose:$type:${now.millisecondsSinceEpoch}',
+      'title': title,
+      'message': body,
+      'severity': 'critical',
+      'timestamp': now.toIso8601String(),
+      'isRead': false,
+    });
+    alerts = [..._localGlucoseAlerts, ...alerts.where((item) => '${item['id'] ?? ''}'.startsWith('glucose:') == false)];
+    notifyListeners();
   }
 
   Future<void> _upload(List<GlucoseSample> samples) async {

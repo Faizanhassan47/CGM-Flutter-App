@@ -1,20 +1,11 @@
 class AppConfig {
   const AppConfig._();
 
-  static const String _defaultUrl = 'https://aima.gms-world.com/';
+  /// Live Circle API. Fixed so a phone build cannot call localhost.
+  static const String apiBaseUrl = 'https://aima.gms-world.com/';
 
-  static const String _rawBaseUrl = String.fromEnvironment('CGM_API_BASE_URL');
-  static const String _rawWsUrl = String.fromEnvironment('CGM_WS_URL');
-
-  /// Backend REST base URL, read from `.env` (CGM_API_BASE_URL),
-  /// falling back to the production URL if not provided at build time.
-  static String get apiBaseUrl =>
-      _rawBaseUrl.trim().isNotEmpty ? _rawBaseUrl.trim() : _defaultUrl;
-
-  /// Realtime gateway URL, read from `.env` (CGM_WS_URL).
-  /// Falls back to the API base URL since both are served by the same backend.
-  static String get wsUrl =>
-      _rawWsUrl.trim().isNotEmpty ? _rawWsUrl.trim() : apiBaseUrl;
+  /// Realtime gateway on the same host.
+  static const String wsUrl = 'https://aima.gms-world.com/';
 
   static const String defaultLanguage = String.fromEnvironment(
     'APP_DEFAULT_LANGUAGE',

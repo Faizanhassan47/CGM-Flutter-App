@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../core/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../widgets/page_top_bar.dart';
 
 class WellnessHistoryScreen extends StatefulWidget {
   const WellnessHistoryScreen({super.key, required this.api});
@@ -67,17 +69,29 @@ class _WellnessHistoryScreenState extends State<WellnessHistoryScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Wellness History'),
-        bottom: TabBar(
-          controller: tabs,
-          tabs: [
-            Tab(text: 'Meals (${meals.length})'),
-            Tab(text: 'Water (${water.length})'),
-          ],
-        ),
-      ),
-      body: loading
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: PageTopBar(
+                title: 'Wellness history',
+                subtitle: 'Past meals and water',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+            ),
+            TabBar(
+              controller: tabs,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.textSecondary,
+              indicatorColor: AppColors.primary,
+              tabs: [
+                Tab(text: 'Meals (${meals.length})'),
+                Tab(text: 'Water (${water.length})'),
+              ],
+            ),
+            Expanded(child: loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
@@ -86,6 +100,10 @@ class _WellnessHistoryScreenState extends State<WellnessHistoryScreen>
                 children: [_mealList(), _waterList()],
               ),
             ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

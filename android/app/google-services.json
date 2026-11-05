@@ -7,6 +7,35 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:203000957883:android:9bddd07cc01e4c06d7d29e",
+        "android_client_info": {
+          "package_name": "com.aima.circle"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "203000957883-r5lchnrp5e9mq03dt95fb0qg64io5hrg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhjB-cbD-3FwqL5sDLxzgYZVrdICOatCI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "203000957883-r5lchnrp5e9mq03dt95fb0qg64io5hrg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:203000957883:android:fc3385f69b3aa7dbd7d29e",
         "android_client_info": {
           "package_name": "com.companyname.cgm.patientapp"
@@ -14,11 +43,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "203000957883-58esulhtj8lnvvfu07bmilkks96bqju8.apps.googleusercontent.com",
+          "client_id": "203000957883-s0v2o2a87cqjnrfmdpkk4r34f8dmqkah.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.companyname.cgm.patientapp",
-            "certificate_hash": "eaf704b8998d2ecca1cee58dd982f6838596ed69"
+            "certificate_hash": "5f51c78f012428bc017094935d51f6e5459152a1"
           }
         },
         {

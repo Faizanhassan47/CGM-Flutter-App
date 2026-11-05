@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../widgets/pill_button.dart';
 
 class FamilyCircleScreen extends StatefulWidget {
@@ -659,56 +660,27 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
         final hasFamily = widget.controller.family != null;
 
         return Scaffold(
-          backgroundColor: AppColors.surface,
-          appBar: AppBar(
-            backgroundColor: AppColors.surface,
-            elevation: 0,
-            leading: Container(
-              margin: AppInsets.all8,
-              decoration: const BoxDecoration(
-                color: AppPalette.hexFFF6F3FA,
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: AppTheme.darkPurple,
-                  size: 20,
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            title: Column(
-              children: const [
-                Text(
-                  'Family circle',
-                  style: TextStyle(
-                    color: AppTheme.darkPurple,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                  ),
-                ),
-                Text(
-                  'People you trust',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh, color: AppTheme.darkPurple),
-                onPressed: widget.controller.loading
-                    ? null
-                    : widget.controller.loadFamily,
-              ),
-            ],
-          ),
+          backgroundColor: AppColors.background,
           body: SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: hasFamily
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              child: Column(
+                children: [
+                  PageTopBar(
+                    title: 'Family circle',
+                    subtitle: 'People you trust',
+                    leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+                    trailing: PageTopAction(
+                      icon: Icons.refresh,
+                      onPressed: widget.controller.loading ? null : widget.controller.loadFamily,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  hasFamily
                   ? _buildActiveFamilyView()
                   : _buildSetupFamilyView(),
+                ],
+              ),
             ),
           ),
         );

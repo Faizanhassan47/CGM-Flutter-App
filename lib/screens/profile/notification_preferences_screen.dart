@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../state/app_controller.dart';
 
 class NotificationPreferencesScreen extends StatefulWidget {
@@ -36,30 +37,18 @@ class _NotificationPreferencesScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(
-            Icons.chevron_left,
-            color: AppTheme.darkPurple,
-            size: 28,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Notification Preferences',
-          style: TextStyle(
-            color: AppTheme.darkPurple,
-            fontWeight: FontWeight.w800,
-            fontSize: 19,
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 24),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           child: Column(
             children: [
+              PageTopBar(
+                title: 'Notifications',
+                subtitle: 'Choose which alerts you receive',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+              const SizedBox(height: 20),
               _buildPreferenceRow(
                 'Critical glucose alerts',
                 criticalGlucoseAlerts,

@@ -4,6 +4,7 @@ import 'package:cgm_sdk/cgm_sdk.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/pill_button.dart';
+import 'system_self_check.dart';
 
 class DeviceSetupScreen extends StatefulWidget {
   const DeviceSetupScreen({super.key, required this.controller});
@@ -14,7 +15,7 @@ class DeviceSetupScreen extends StatefulWidget {
 }
 
 class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
-  int currentStep = 1; // 1: Choose, 2: Pairing/Scan, 3: Ready
+  int currentStep = 0; // 0: phone check, 1: Choose, 2: Pairing/Scan, 3: Ready
   String selectedType = 'Disposable'; // 'Disposable' | 'Reusable'
   final qrController = TextEditingController();
   bool showCamera = false;
@@ -32,7 +33,16 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
     super.dispose();
   }
 
-  void _onConnectDevice() {
+  Future<void> _onConnectDevice() async {
+    final ready = await readPhoneReadiness();
+    if (!mounted) return;
+    if (!ready.ready) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ready.blockedReason)),
+      );
+      setState(() => currentStep = 0);
+      return;
+    }
     setState(() {
       currentStep = 2;
     });
@@ -86,7 +96,11 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
               },
             ),
             title: Text(
-              isStepTwo ? 'Device Pairing' : 'Device Setup',
+              currentStep == 0
+                  ? 'System Self-Check'
+                  : isStepTwo
+                  ? 'Device Pairing'
+                  : 'Device Setup',
               style: const TextStyle(
                 color: AppTheme.darkPurple,
                 fontWeight: FontWeight.w700,
@@ -117,7 +131,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                     ],
                   ),
                 )
-              else
+              else if (currentStep > 0)
                 Padding(
                   padding: const EdgeInsets.only(right: 20),
                   child: Center(
@@ -142,7 +156,11 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                       horizontal: 24,
                       vertical: 12,
                     ),
-                    child: currentStep == 1
+                    child: currentStep == 0
+                        ? SystemSelfCheck(
+                            onContinue: () => setState(() => currentStep = 1),
+                          )
+                        : currentStep == 1
                         ? _buildStepOne()
                         : currentStep == 2
                         ? _buildStepTwo()

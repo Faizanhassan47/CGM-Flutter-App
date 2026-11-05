@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../services/wellness_offline_store.dart';
 import 'reminder_settings_screen.dart';
 
@@ -191,8 +193,23 @@ class _WellnessScreenState extends State<WellnessScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (error != null)
       return Scaffold(
-        appBar: AppBar(title: const Text('Wellness')),
-        body: Center(child: Text(error!)),
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              children: [
+                PageTopBar(
+                  title: 'Wellness',
+                  subtitle: 'Meals and water for today',
+                  leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+                ),
+                const SizedBox(height: 24),
+                Text(error!),
+              ],
+            ),
+          ),
+        ),
       );
     final meals = (today['meals'] as List?)?.length ?? 0;
     final water = (today['waterMl'] as num?)?.toInt() ?? 0;
@@ -202,25 +219,26 @@ class _WellnessScreenState extends State<WellnessScreen> {
         ? null
         : (water / goal).clamp(0.0, 1.0);
     return Scaffold(
-      backgroundColor: const Color(0xFFFCFCFD),
-      appBar: AppBar(
-        title: const Text(
-          'Wellness',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ReminderSettingsScreen(api: widget.api),
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: PageTopBar(
+                title: 'Wellness',
+                subtitle: 'Meals and water for today',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+                trailing: PageTopAction(
+                  icon: Icons.settings_outlined,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ReminderSettingsScreen(api: widget.api)),
+                  ),
+                ),
               ),
             ),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
+            Expanded(child: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
@@ -314,6 +332,10 @@ class _WellnessScreenState extends State<WellnessScreen> {
             const Text(
               'Wellness reminders are optional and separate from critical CGM alerts.',
               style: TextStyle(color: Colors.black54, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
             ),
           ],
         ),

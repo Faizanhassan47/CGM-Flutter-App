@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../services/api_service.dart';
 
 class DietAssistantScreen extends StatefulWidget {
@@ -82,31 +83,27 @@ class _DietAssistantScreenState extends State<DietAssistantScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFCFAFD),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFFCFAFD),
-        elevation: 0,
-        centerTitle: true,
-        leading: const BackButton(color: AppTheme.darkPurple),
-        title: const Text(
-          'AI Diet Assistant',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.darkPurple,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(
-              Icons.more_vert_rounded,
-              color: AppTheme.darkPurple,
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: PageTopBar(
+                title: 'Diet assistant',
+                subtitle: 'Questions about your glucose and meals',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
             ),
-          ),
-        ],
+            Expanded(child: _dietBody()),
+          ],
+        ),
       ),
-      body: ListView(
+    );
+  }
+
+  Widget _dietBody() {
+    return ListView(
         padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
         children: [
           _buildStatusBar(),
@@ -139,7 +136,6 @@ class _DietAssistantScreenState extends State<DietAssistantScreen> {
             style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
           ),
         ],
-      ),
     );
   }
 

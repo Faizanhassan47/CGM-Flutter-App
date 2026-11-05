@@ -1,9 +1,10 @@
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/pill_button.dart';
-import '../onboarding/device_setup_screen.dart';
+import '../onboarding/pairing_guide_screen.dart';
 
 class LinkedDeviceScreen extends StatelessWidget {
   const LinkedDeviceScreen({super.key, required this.controller});
@@ -46,32 +47,19 @@ class LinkedDeviceScreen extends StatelessWidget {
     final tempVal = controller.deviceStatus?.temperature ?? 32.5;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(
-            Icons.chevron_left,
-            color: AppTheme.darkPurple,
-            size: 28,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Linked CGM Device',
-          style: TextStyle(
-            color: AppTheme.darkPurple,
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 20),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 10),
+              PageTopBar(
+                title: 'Linked device',
+                subtitle: 'Sensor details and connection',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+              const SizedBox(height: 16),
               Text(
                 deviceName,
                 style: const TextStyle(
@@ -150,11 +138,7 @@ class LinkedDeviceScreen extends StatelessWidget {
                 variant: PillButtonVariant.cyan,
                 text: 'Pair another sensor',
                 onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => DeviceSetupScreen(controller: controller),
-                    ),
-                  );
+                  openDeviceSetup(context, controller);
                 },
               ),
             ],

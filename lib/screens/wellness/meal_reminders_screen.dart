@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../core/app_theme.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../services/notification_service.dart';
-import 'wellness_history_screen.dart';
 
 class MealRemindersScreen extends StatefulWidget {
-  const MealRemindersScreen({super.key, required this.api});
+  const MealRemindersScreen({super.key, required this.api, this.embedded = false});
   final ApiService api;
+  final bool embedded;
 
   @override
   State<MealRemindersScreen> createState() => _MealRemindersScreenState();
@@ -15,7 +17,6 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
   static const coral = Color(0xFFFF3B3B);
   static const ink = Color(0xFF10203A);
   List<dynamic> schedules = [];
-  bool enabled = true;
   bool loading = true;
 
   @override
@@ -30,7 +31,6 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
       if (!mounted) return;
       setState(() {
         schedules = (response['schedules'] as List?) ?? [];
-        enabled = (response['settings'] as Map?)?['mealEnabled'] != false;
         loading = false;
       });
     } catch (_) {
@@ -49,12 +49,6 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
         schedules: scheds,
       );
     } catch (_) {}
-  }
-
-  Future<void> _saveEnabled(bool value) async {
-    setState(() => enabled = value);
-    await widget.api.updateWellnessReminders({'mealEnabled': value});
-    await _reschedule();
   }
 
   Future<void> _add() async {
@@ -158,29 +152,16 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    return Scaffold(
-      appBar: AppBar(title: const Text('Meal Reminders')),
-      body: RefreshIndicator(
+    if (loading) {
+      const spinner = Center(child: CircularProgressIndicator());
+      return widget.embedded ? spinner : const Scaffold(body: spinner);
+    }
+    final content = RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           children: [
             _hero(),
-            const SizedBox(height: 16),
-            _switchCard(),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => WellnessHistoryScreen(api: widget.api),
-                ),
-              ),
-              icon: const Icon(Icons.history),
-              label: const Text('View meal history'),
-            ),
             const SizedBox(height: 26),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -230,6 +211,24 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
             ),
           ],
         ),
+      );
+    if (widget.embedded) return content;
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: PageTopBar(
+                title: 'Meals',
+                subtitle: 'Reminder times for the day',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+            ),
+            Expanded(child: content),
+          ],
+        ),
       ),
     );
   }
@@ -272,25 +271,6 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
     ),
   );
 
-  Widget _switchCard() => Card(
-    child: SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-      secondary: const CircleAvatar(
-        backgroundColor: Color(0xFFFFE4E4),
-        foregroundColor: coral,
-        child: Icon(Icons.notifications_active_outlined),
-      ),
-      title: const Text(
-        'Meal reminders',
-        style: TextStyle(fontWeight: FontWeight.w800),
-      ),
-      subtitle: Text(enabled ? 'Reminders are active' : 'Reminders are paused'),
-      value: enabled,
-      activeColor: coral,
-      onChanged: _saveEnabled,
-    ),
-  );
-
   Widget _scheduleCard(dynamic schedule) {
     final type = '${schedule['customName'] ?? schedule['mealType'] ?? 'Meal'}';
     return Card(
@@ -324,10 +304,10 @@ class _MealRemindersScreenState extends State<MealRemindersScreen> {
             const Icon(Icons.edit_outlined, size: 18, color: Colors.black38),
             const SizedBox(width: 8),
             Icon(
-              enabled && schedule['enabled'] != false
+              schedule['enabled'] != false
                   ? Icons.check_circle
                   : Icons.pause_circle_outline,
-              color: enabled && schedule['enabled'] != false
+              color: schedule['enabled'] != false
                   ? Colors.green
                   : Colors.black26,
             ),

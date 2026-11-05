@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/material.dart';
 import '../alerts/alerts_screen.dart';
@@ -5,8 +7,9 @@ import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
-import '../../widgets/glucose_trend_chart.dart';
+import '../../widgets/page_top_bar.dart';
 import '../onboarding/device_setup_screen.dart';
+import '../wellness/daily_activities_screen.dart';
 import '../wellness/meal_reminders_screen.dart';
 import '../wellness/water_reminders_screen.dart';
 import '../wellness/wellness_screen.dart';
@@ -53,15 +56,6 @@ class HomeScreen extends StatelessWidget {
                   ? (rawMg / 18.0182).toStringAsFixed(1)
                   : '${rawMg.round()}')
             : '--';
-        final double displayLow = isMmol
-            ? (controller.targetLow / 18.0182)
-            : controller.targetLow;
-        final double displayHigh = isMmol
-            ? (controller.targetHigh / 18.0182)
-            : controller.targetHigh;
-        final String targetStr = isMmol
-            ? '${displayLow.toStringAsFixed(1)}-${displayHigh.toStringAsFixed(1)}'
-            : '${controller.targetLow.round()}-${controller.targetHigh.round()}';
 
         final displayName = controller.fullName.trim().isNotEmpty
             ? controller.fullName.trim().split(' ').first
@@ -72,17 +66,10 @@ class HomeScreen extends StatelessWidget {
 
         final isUrgentLow = mg != null && mg < 55;
         final inTarget = mg != null && mg >= lowT && mg <= highT;
-        final statusText = mg == null
-            ? 'No sensor readings'
-            : isUrgentLow
-            ? 'Urgent Low (< 55 mg/dL)'
-            : inTarget
-            ? 'In Target • Stable (±0.5 mg/dL/min)'
-            : mg < lowT
-            ? 'Below Target • Low'
-            : 'Above Target • High';
 
-        return SafeArea(
+        return ColoredBox(
+          color: AppColors.background,
+          child: SafeArea(
           bottom: false,
           child: RefreshIndicator(
             color: AppTheme.primaryPurple,
@@ -93,109 +80,26 @@ class HomeScreen extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [
-                // 1. Top Header (Good morning, Visole + Profile Avatar)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _greeting,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: AppTheme.textMuted,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.darkPurple,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: 'Alerts',
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    AlertsScreen(controller: controller),
-                              ),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.notifications_none_rounded,
-                            color: AppTheme.darkPurple,
-                            size: 27,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () => onSwitchTab(4),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppTheme.lightPurpleBg,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.primaryPurple.withValues(
-                                  alpha: 0.35,
-                                ),
-                                width: 1.5,
-                              ),
-                              image:
-                                  controller.profilePictureUrl != null &&
-                                      controller.profilePictureUrl!.isNotEmpty
-                                  ? DecorationImage(
-                                      image: NetworkImage(
-                                        controller.profilePictureUrl!,
-                                      ),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            child:
-                                controller.profilePictureUrl == null ||
-                                    controller.profilePictureUrl!.isEmpty
-                                ? const Icon(
-                                    Icons.person_rounded,
-                                    color: AppTheme.primaryPurple,
-                                    size: 26,
-                                  )
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-
-                // 2. Sensor status / Reconnecting card
-                FadeSlideEntrance(
-                  delay: const Duration(milliseconds: 50),
-                  child: _buildSensorStatusCard(context, isConnected),
-                ),
-                const SizedBox(height: 14),
-
-                // 3. Connect a CGM sensor purple banner (hidden once connected or bound)
-                if (!isConnected && controller.wear == null) ...[
-                  FadeSlideEntrance(
-                    delay: const Duration(milliseconds: 80),
-                    child: _buildConnectCgmBanner(context),
+                PageTopBar(
+                  title: displayName,
+                  subtitle: controller.wear == null
+                      ? _greeting
+                      : () {
+                          final days = controller.wear!.expiresAt.difference(DateTime.now()).inDays;
+                          final life = days > 0 ? '$days days left on this sensor' : 'Replace this sensor';
+                          return '$_greeting · $life';
+                        }(),
+                  trailing: PageTopAction(
+                    tooltip: 'Alerts',
+                    icon: Icons.notifications_none_rounded,
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(builder: (_) => AlertsScreen(controller: controller)),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 16),
-                ],
+                ),
+                const SizedBox(height: 16),
 
                 // 4. Grace Period / Sensor Expiration Warning Banner
                 Builder(
@@ -259,68 +163,189 @@ class HomeScreen extends StatelessWidget {
                   },
                 ),
 
-                // 5. Glucose Telemetry Cyan Card
-                FadeSlideEntrance(
-                  delay: const Duration(milliseconds: 100),
-                  child: _buildTelemetryCyanCard(
-                    context,
-                    mg,
-                    statusText,
-                    lowT,
-                    highT,
-                    isConnected: isConnected,
-                    unitStr: unitStr,
-                    displayGlucose: displayGlucose,
-                    targetStr: targetStr,
-                    isUrgentLow: isUrgentLow,
-                    isHigh: mg != null && mg > highT,
-                  ),
+                _readingCard(
+                  context,
+                  mg: mg,
+                  displayGlucose: displayGlucose,
+                  unitStr: unitStr,
+                  isConnected: isConnected,
+                  inTarget: inTarget,
+                  isUrgentLow: isUrgentLow,
+                  isHigh: mg != null && mg > highT,
+                  scannedAt: sample?.measuredAt,
                 ),
-                const SizedBox(height: 24),
-
+                const SizedBox(height: 14),
+                _todayChart(context, lowT, highT, isConnected, isMmol),
+                const SizedBox(height: 14),
+                _statGrid(isConnected, lowT, highT),
+                const SizedBox(height: 14),
                 _ReminderHomeCards(api: controller.api),
-                const SizedBox(height: 24),
-
-                if (isConnected) ...[
-                  // Sensor-derived summaries remain hidden while offline so
-                  // stale readings cannot be mistaken for live values.
-                  FadeSlideEntrance(
-                    delay: const Duration(milliseconds: 150),
-                    child: _buildTodayAtAGlance(true),
-                  ),
-                  const SizedBox(height: 24),
-                  FadeSlideEntrance(
-                    delay: const Duration(milliseconds: 200),
-                    child: GlucoseTrendCard(
-                      samples: controller.history,
-                      lowTarget: lowT,
-                      highTarget: highT,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  FadeSlideEntrance(
-                    delay: const Duration(milliseconds: 250),
-                    child: _buildDietAssistantCard(
-                      mg,
-                      lowT,
-                      highT,
-                      controller.history,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-
-                // 8. "Target range" Card (Screenshot 091624)
-                FadeSlideEntrance(
-                  delay: const Duration(milliseconds: 300),
-                  child: _buildTargetRangeCard(lowT, highT),
-                ),
                 const SizedBox(height: 24),
               ],
             ),
           ),
+        ),
         );
       },
+    );
+  }
+
+  Widget _readingCard(
+    BuildContext context, {
+    required int? mg,
+    required String displayGlucose,
+    required String unitStr,
+    required bool isConnected,
+    required bool inTarget,
+    required bool isUrgentLow,
+    required bool isHigh,
+    required DateTime? scannedAt,
+  }) {
+    final lastSample = controller.history.where((s) => s.value != null).lastOrNull;
+    final wear = controller.wear;
+    final warming = isConnected && wear != null && DateTime.now().isBefore(wear.warmupEndAt);
+    final warmupLeft = warming ? wear.warmupEndAt.difference(DateTime.now()).inMinutes.clamp(1, 999) : 0;
+    final label = !isConnected
+        ? 'No sensor'
+        : warming
+        ? 'Warming up'
+        : mg == null
+        ? 'Waiting'
+        : isUrgentLow
+        ? 'Urgent low'
+        : isHigh
+        ? 'Above range'
+        : inTarget
+        ? 'In range'
+        : 'Below range';
+    final chipColor = isUrgentLow || isHigh || (mg != null && !inTarget)
+        ? AppColors.danger
+        : AppColors.success;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Your glucose', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.4)),
+        const SizedBox(height: 4),
+        GestureDetector(
+          onTap: !isConnected
+              ? () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+                  )
+              : null,
+          child: Text(
+            !isConnected
+                ? (lastSample == null
+                    ? 'Device is not connected'
+                    : 'Device is not connected · last reading ${DateFormat.jm().format(lastSample.measuredAt)}')
+                : warming
+                ? '$warmupLeft min left in warmup'
+                : scannedAt == null
+                ? 'No reading yet'
+                : 'Scanned at ${DateFormat.jm().format(scannedAt)}',
+            style: TextStyle(fontSize: 13, color: !isConnected ? AppColors.danger : AppColors.textSecondary, fontWeight: !isConnected ? FontWeight.w700 : FontWeight.w500),
+          ),
+        ),
+        if (isConnected && mg != null) ...[
+          const SizedBox(height: 6),
+          Text(label, style: TextStyle(color: chipColor, fontWeight: FontWeight.w700, fontSize: 13)),
+        ],
+        if (!isConnected && controller.wear == null) ...[
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              minimumSize: const Size.fromHeight(46),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            ),
+            child: const Text('Connect sensor'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _todayChart(BuildContext context, double lowT, double highT, bool isConnected, bool mmol) {
+    return _HomeChart(
+      samples: isConnected ? controller.history : <GlucoseSample>[],
+      low: lowT,
+      high: highT,
+      mmol: mmol,
+      connected: isConnected,
+      api: controller.api,
+      onConnect: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+      ),
+    );
+  }
+
+  Widget _statGrid(bool isConnected, double lowT, double highT) {
+    final cutoff = DateTime.now().subtract(const Duration(hours: 12));
+    final values = isConnected
+        ? controller.history
+            .where((s) => s.value != null && s.measuredAt.isAfter(cutoff))
+            .map((s) => s.value! > 30 ? s.value! : s.value! * 18.0182)
+            .toList()
+        : <double>[];
+    final avg = values.isEmpty ? null : (values.reduce((a, b) => a + b) / values.length).round();
+    final tir = values.isEmpty
+        ? null
+        : (values.where((v) => v >= lowT && v <= highT).length / values.length * 100).round();
+    final mv = controller.deviceStatus?.batteryMv;
+    final battery = mv == null ? null : (((mv - 2600) / 400) * 100).clamp(0, 100).round();
+    final wear = controller.wear;
+    String life = '--';
+    String lifeNote = '';
+    var status = isConnected ? 'Ready' : 'Offline';
+    var statusNote = battery == null ? '' : 'Battery $battery%';
+    if (wear != null) {
+      final days = wear.expiresAt.difference(DateTime.now()).inDays;
+      life = days > 0 ? '${days}d' : '0d';
+      lifeNote = 'until expiry';
+      if (isConnected && DateTime.now().isBefore(wear.warmupEndAt)) {
+        final mins = wear.warmupEndAt.difference(DateTime.now()).inMinutes.clamp(1, 999);
+        status = 'Warming up';
+        statusNote = '$mins min left';
+      }
+    }
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.55,
+      children: [
+        _stat(Icons.medication_outlined, AppColors.primarySoft, AppColors.primary, 'Average', avg == null ? '--' : '$avg', 'mg/dL', false),
+        _stat(Icons.restaurant_outlined, AppColors.primary, Colors.white, 'Time in range', tir == null ? '--' : '$tir%', 'last 12 hours', true),
+        _stat(Icons.touch_app_outlined, AppColors.primarySoft, AppColors.primary, 'Sensor life', life, lifeNote, false),
+        _stat(Icons.bolt, AppColors.primarySoft, AppColors.success, 'Status', status, statusNote, false),
+      ],
+    );
+  }
+
+  Widget _stat(IconData icon, Color bg, Color fg, String title, String value, String note, bool filled) {
+    final titleColor = filled ? Colors.white70 : AppColors.textSecondary;
+    final valueColor = filled ? Colors.white : AppColors.textPrimary;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(title, style: TextStyle(fontSize: 13, color: titleColor, fontWeight: FontWeight.w600))),
+              Icon(icon, size: 18, color: fg),
+            ],
+          ),
+          const Spacer(),
+          Text(value, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: valueColor, height: 1)),
+          if (note.isNotEmpty) Text(note, style: TextStyle(fontSize: 12, color: titleColor)),
+        ],
+      ),
     );
   }
 
@@ -1112,7 +1137,7 @@ class HomeScreen extends StatelessWidget {
 
     // Decision based on 12-hour report context and current status
     if (effectiveMg < 55) {
-      title = 'Urgent Hypoglycemia • Fast-Acting Carbs';
+      title = 'Urgent Hypoglycemia â€¢ Fast-Acting Carbs';
       advice =
           'Your glucose dropped critically. Take 15g of fast-acting carbohydrates immediately and re-test in 15 minutes (Rule of 15).';
       foods = [
@@ -1124,7 +1149,7 @@ class HomeScreen extends StatelessWidget {
       badgeColor = AppPalette.hexFFEF4444;
       icon = Icons.warning_amber_rounded;
     } else if (effectiveMg < lowTarget || lowCount12h >= 3) {
-      title = 'Below Target • Hypo Stabilization';
+      title = 'Below Target â€¢ Hypo Stabilization';
       advice =
           'Your 12-hour history reflects dips below ${lowTarget.round()} mg/dL. Prioritize complex carbs paired with healthy fats and protein to prevent hypoglycemia.';
       foods = [
@@ -1136,7 +1161,7 @@ class HomeScreen extends StatelessWidget {
       badgeColor = AppPalette.hexFFF97316;
       icon = Icons.cookie_outlined;
     } else if (effectiveMg > 220 || highCount12h >= 8) {
-      title = 'High Glucose Load • Hydration & Low GI';
+      title = 'High Glucose Load â€¢ Hydration & Low GI';
       advice =
           'Over the last 12 hours, readings trended above ${highTarget.round()} mg/dL ($highCount12h times). Avoid refined sugars and simple carbs; hydrate generously.';
       foods = [
@@ -1148,7 +1173,7 @@ class HomeScreen extends StatelessWidget {
       badgeColor = AppPalette.hexFF8B5CF6;
       icon = Icons.water_drop_outlined;
     } else if (effectiveMg > highTarget) {
-      title = 'Elevated Glucose • Fiber & Lean Protein';
+      title = 'Elevated Glucose â€¢ Fiber & Lean Protein';
       advice =
           'Recent levels are slightly above target. Choose high-fiber foods to slow absorption and take a light 15-minute walk.';
       foods = [
@@ -1160,7 +1185,7 @@ class HomeScreen extends StatelessWidget {
       badgeColor = AppPalette.hexFF8B5CF6;
       icon = Icons.eco_rounded;
     } else {
-      title = 'Optimal Glycemic Control • Balanced Diet';
+      title = 'Optimal Glycemic Control â€¢ Balanced Diet';
       advice =
           'Excellent stability over the past 12 hours ($tir12h% Time in Range). Maintain your metabolic state with whole grains, lean proteins, and unsaturated fats.';
       foods = [
@@ -1510,6 +1535,8 @@ class _ReminderHomeCards extends StatefulWidget {
 
 class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
   Map<String, dynamic>? summary;
+  String mealNext = '';
+  String waterNext = '';
   @override
   void initState() {
     super.initState();
@@ -1519,8 +1546,59 @@ class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
   Future<void> _load() async {
     try {
       final value = await widget.api.getWellnessToday();
-      if (mounted) setState(() => summary = value);
+      final reminders = await widget.api.getWellnessReminders();
+      if (!mounted) return;
+      setState(() {
+        summary = value;
+        mealNext = _nextMeal(reminders['schedules']);
+        waterNext = _nextWater(reminders['settings']);
+      });
     } catch (_) {}
+  }
+
+  String _nextMeal(dynamic raw) {
+    final now = TimeOfDay.now();
+    final minutesNow = now.hour * 60 + now.minute;
+    var best = 24 * 60 + 1;
+    String label = '';
+    for (final item in (raw as List?) ?? const []) {
+      final map = item is Map ? item : null;
+      if (map == null) continue;
+      final parts = '${map['reminderTime'] ?? ''}'.split(':');
+      if (parts.length < 2) continue;
+      final mins = (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+      final delta = mins >= minutesNow ? mins - minutesNow : mins + 24 * 60 - minutesNow;
+      if (delta < best) {
+        best = delta;
+        label = '${map['customName'] ?? map['mealType'] ?? 'Meal'} · ${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
+      }
+    }
+    return label;
+  }
+
+  String _nextWater(dynamic raw) {
+    if (raw is! Map) return '';
+    if (raw['waterEnabled'] == false) return '';
+    final interval = int.tryParse('${raw['waterIntervalMinutes'] ?? 120}') ?? 120;
+    if (raw['quietHoursEnabled'] != false && _inQuiet('${raw['quietStart'] ?? '22:00'}', '${raw['quietEnd'] ?? '07:00'}')) {
+      return 'Quiet until ${raw['quietEnd'] ?? '07:00'}';
+    }
+    if (interval <= 0) return '';
+    return 'Every $interval min';
+  }
+
+  bool _inQuiet(String start, String end) {
+    int minutes(String value) {
+      final parts = value.split(':');
+      if (parts.length < 2) return 0;
+      return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+    }
+    final now = DateTime.now().hour * 60 + DateTime.now().minute;
+    final from = minutes(start);
+    final to = minutes(end);
+    if (from == to) return false;
+    if (from < to) return now >= from && now < to;
+    return now >= from || now < to;
   }
 
   @override
@@ -1530,39 +1608,43 @@ class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Daily Wellness',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-        ),
+        const Text('Today', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _card(
-                context,
-                Icons.restaurant_outlined,
-                const Color(0xFFFF3B3B),
-                'Meal reminders',
-                '$meals logged',
-                'Manage meals',
-                MealRemindersScreen(api: widget.api),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _card(
-                context,
-                Icons.water_drop_outlined,
-                const Color(0xFF168DE2),
-                'Water reminders',
-                '$water mL logged',
-                'Manage water',
-                WaterRemindersScreen(api: widget.api),
-              ),
-            ),
-          ],
-        ),
+        _glanceRow(context, Icons.restaurant_outlined, AppColors.primary, 'Meals', '$meals logged', mealNext, MealRemindersScreen(api: widget.api)),
+        const SizedBox(height: 8),
+        _glanceRow(context, Icons.water_drop_outlined, AppColors.primary, 'Water', '$water mL', waterNext, WaterRemindersScreen(api: widget.api)),
       ],
+    );
+  }
+
+  Widget _glanceRow(BuildContext context, IconData icon, Color color, String title, String value, String next, Widget page) {
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            children: [
+              CircleAvatar(radius: 18, backgroundColor: color.withValues(alpha: 0.12), child: Icon(icon, color: color, size: 18)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    if (next.isNotEmpty) Text(next, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+              Text(value, style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1650,7 +1732,7 @@ class _WellnessHomeCardState extends State<_WellnessHomeCard> {
       child: ListTile(
         leading: const Icon(Icons.health_and_safety_outlined),
         title: const Text('Daily Wellness'),
-        subtitle: Text('$meals meals logged  •  $water mL water'),
+        subtitle: Text('$meals meals logged  â€¢  $water mL water'),
         trailing: TextButton(
           onPressed: () => Navigator.push(
             context,
@@ -1661,4 +1743,373 @@ class _WellnessHomeCardState extends State<_WellnessHomeCard> {
       ),
     );
   }
+}
+
+class _HomeChart extends StatefulWidget {
+  const _HomeChart({required this.samples, required this.low, required this.high, required this.mmol, required this.connected, required this.onConnect, required this.api});
+  final List<GlucoseSample> samples;
+  final double low;
+  final double high;
+  final bool mmol;
+  final bool connected;
+  final VoidCallback onConnect;
+  final dynamic api;
+
+  @override
+  State<_HomeChart> createState() => _HomeChartState();
+}
+
+class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMixin {
+  int range = 0;
+  int? picked;
+  List<DateTime> marks = [];
+  static const _labels = ['Live', '1h', '6h', '12h', '24h'];
+
+  Duration get _span => switch (range) {
+    1 => const Duration(hours: 1),
+    2 => const Duration(hours: 6),
+    3 => const Duration(hours: 12),
+    4 => const Duration(hours: 24),
+    _ => const Duration(minutes: 15),
+  };
+  late final AnimationController _draw;
+
+  @override
+  void initState() {
+    super.initState();
+    _draw = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..forward();
+    _loadMarks();
+  }
+
+  Future<void> _loadMarks() async {
+    final from = DateTime.now().toUtc().subtract(const Duration(hours: 24)).toIso8601String();
+    final found = <DateTime>[];
+    try {
+      final today = await widget.api.getWellnessToday(startUtc: from);
+      for (final item in (today['meals'] as List?) ?? const []) {
+        final at = DateTime.tryParse('${item['occurredAtUtc'] ?? ''}')?.toLocal();
+        if (at != null) found.add(at);
+      }
+    } catch (_) {}
+    try {
+      final activities = await widget.api.getActivities(from: from);
+      for (final item in activities) {
+        if (item is! Map) continue;
+        final at = DateTime.tryParse('${item['occurredAtUtc'] ?? ''}')?.toLocal();
+        if (at != null) found.add(at);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => marks = found);
+  }
+
+  Future<void> _noteSheet() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => DailyActivitiesScreen(api: widget.api)),
+    );
+    if (mounted) _loadMarks();
+  }
+
+  @override
+  void dispose() {
+    _draw.dispose();
+    super.dispose();
+  }
+
+  void _select(int item) {
+    setState(() {
+      range = item;
+      picked = null;
+    });
+    _draw.forward(from: 0);
+  }
+
+  void _pick(double dx, double width, int count) {
+    if (count < 2 || width <= 8) return;
+    final t = ((dx - 4) / (width - 8)).clamp(0.0, 1.0);
+    setState(() => picked = (t * (count - 1)).round());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cutoff = DateTime.now().subtract(_span);
+    final points = widget.samples.where((s) => s.value != null && s.measuredAt.isAfter(cutoff)).toList();
+    final values = points.map((s) => s.value! > 30 ? s.value! : s.value! * 18.0182).toList();
+    final times = points.map((s) => s.measuredAt).toList();
+    String shown(double mg) => widget.mmol ? (mg / 18.0182).toStringAsFixed(1) : mg.round().toString();
+    final focus = values.isEmpty ? 0 : (picked ?? values.length - 1).clamp(0, values.length - 1);
+    final focusLabel = values.isEmpty ? '' : '${shown(values[focus])}\n${DateFormat('h:mm a').format(times[focus])}';
+    final delta = values.length < 2 ? 0.0 : values.last - values.first;
+    final trend = delta.abs() < 8 ? 0 : delta.sign.toInt();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+            children: [
+              for (var item = 0; item < _labels.length; item++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => _select(item),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: range == item ? AppColors.primary : AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _labels[item],
+                        style: TextStyle(
+                          color: range == item ? Colors.white : AppColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: range == 0 && widget.connected && values.isNotEmpty ? 250 : 190,
+            child: !widget.connected
+                ? GestureDetector(
+                    onTap: widget.onConnect,
+                    child: const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        'Device is not connected. Connect a sensor to see readings.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700, height: 1.35),
+                      ),
+                    ),
+                  ),
+                  )
+                : range == 0 && values.isNotEmpty
+                ? GestureDetector(
+                    onTap: _noteSheet,
+                    child: _LiveGauge(
+                    mg: values.last,
+                    text: shown(values.last),
+                    unit: widget.mmol ? 'mmol/L' : 'mg/dL',
+                    low: widget.low,
+                    high: widget.high,
+                    trend: trend,
+                  ),
+                  )
+                : values.length < 2
+                ? Center(child: Text(range == 0 ? 'Collecting the last 15 minutes' : 'No readings in this range yet.', style: const TextStyle(color: AppColors.textSecondary)))
+                : LayoutBuilder(
+                    builder: (context, constraints) => GestureDetector(
+                      onTapDown: (details) => _pick(details.localPosition.dx, constraints.maxWidth, values.length),
+                      child: AnimatedBuilder(
+                        animation: _draw,
+                        builder: (context, _) => CustomPaint(
+                          painter: _SparkPainter(
+                            values: values,
+                            times: times,
+                            label: focusLabel,
+                            index: focus,
+                            low: widget.low,
+                            high: widget.high,
+                            marks: marks,
+                            progress: Curves.easeOutCubic.transform(_draw.value),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LiveGauge extends StatelessWidget {
+  const _LiveGauge({required this.mg, required this.text, required this.unit, required this.low, required this.high, required this.trend});
+  final double mg;
+  final String text;
+  final String unit;
+  final double low;
+  final double high;
+  final int trend;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = mg < low || mg > high ? AppColors.danger : AppColors.success;
+    final arrow = trend > 0 ? Icons.trending_up_rounded : trend < 0 ? Icons.trending_down_rounded : Icons.trending_flat_rounded;
+    return CustomPaint(
+      painter: _GaugePainter(mg: mg),
+      child: Center(
+        child: Container(
+          width: 118,
+          height: 118,
+          decoration: const BoxDecoration(color: AppColors.surface, shape: BoxShape.circle),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(arrow, color: color, size: 22),
+              Text(text, style: TextStyle(fontSize: 40, height: 1, fontWeight: FontWeight.w800, color: color)),
+              Text(unit, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  _GaugePainter({required this.mg});
+  final double mg;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2 + 8);
+    final radius = math.min(size.width, size.height) / 2 - 8;
+    const start = math.pi * 0.85;
+    const sweep = math.pi * 1.3;
+    final track = Paint()
+      ..color = AppColors.primarySoft
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 16
+      ..strokeCap = StrokeCap.round;
+    final arc = Paint()
+      ..color = AppColors.primary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 16
+      ..strokeCap = StrokeCap.round;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    canvas.drawArc(rect, start, sweep, false, track);
+    final t = ((mg - 40) / 260).clamp(0.0, 1.0);
+    canvas.drawArc(rect, start, sweep * t, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GaugePainter oldDelegate) => oldDelegate.mg != mg;
+}
+
+class _SparkPainter extends CustomPainter {
+  _SparkPainter({required this.values, required this.times, required this.label, required this.index, required this.progress, required this.low, required this.high, required this.marks});
+  final List<double> values;
+  final List<DateTime> times;
+  final String label;
+  final int index;
+  final double progress;
+  final double low;
+  final double high;
+  final List<DateTime> marks;
+  static const line = AppColors.primary;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2 || size.width < 40 || size.height < 40) return;
+    const bottomGutter = 22.0;
+    final plot = Rect.fromLTWH(4, 28, size.width - 8, size.height - 28 - bottomGutter);
+    final minV = values.reduce((a, b) => a < b ? a : b) - 12;
+    final maxV = values.reduce((a, b) => a > b ? a : b) + 18;
+    final span = (maxV - minV).abs() < 1 ? 1.0 : (maxV - minV);
+    double yOf(double v) => plot.bottom - ((v - minV) / span) * plot.height;
+    double xOf(int i) => plot.left + plot.width * i / (values.length - 1);
+    final bandTop = yOf(high).clamp(plot.top, plot.bottom);
+    final bandBottom = yOf(low).clamp(plot.top, plot.bottom);
+    canvas.drawRect(
+      Rect.fromLTRB(plot.left, bandTop, plot.right, bandBottom),
+      Paint()..color = AppColors.success.withValues(alpha: 0.14),
+    );
+
+    final path = Path();
+    final points = <Offset>[];
+    for (var i = 0; i < values.length; i++) {
+      final p = Offset(xOf(i), yOf(values[i]));
+      points.add(p);
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+    final metrics = path.computeMetrics().toList();
+    final drawn = metrics.isEmpty ? path : metrics.first.extractPath(0, metrics.first.length * progress.clamp(0, 1));
+    canvas.drawPath(
+      drawn,
+      Paint()
+        ..color = line
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.8
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    final last = points[index.clamp(0, points.length - 1)];
+    canvas.drawLine(Offset(last.dx, last.dy), Offset(last.dx, plot.bottom), Paint()..color = AppColors.surfaceBorder..strokeWidth = 1);
+    canvas.drawCircle(last, 5, Paint()..color = AppColors.primary);
+    canvas.drawCircle(last, 2.2, Paint()..color = AppColors.surface);
+    for (final mark in marks) {
+      var nearest = 0;
+      var best = 1 << 30;
+      for (var i = 0; i < times.length; i++) {
+        final gap = times[i].difference(mark).inMinutes.abs();
+        if (gap < best) {
+          best = gap;
+          nearest = i;
+        }
+      }
+      if (best > 30) continue;
+      canvas.drawCircle(points[nearest].translate(0, -12), 5, Paint()..color = AppColors.primary);
+    }
+
+    final badge = TextPainter(
+      text: TextSpan(
+        children: [
+          for (final line in label.split('\n'))
+            TextSpan(
+              text: line == label.split('\n').first ? '$line\n' : line,
+              style: line == label.split('\n').first
+                  ? const TextStyle(fontSize: 15, height: 1.1, fontWeight: FontWeight.w800, color: AppColors.textPrimary)
+                  : const TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+            ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      textDirection: ui.TextDirection.ltr,
+    )..layout();
+    final maxX = size.width - badge.width;
+    final maxY = (last.dy - badge.height - 8).clamp(0.0, size.height);
+    badge.paint(
+      canvas,
+      Offset(
+        maxX <= 0 ? 0 : (last.dx - badge.width / 2).clamp(0.0, maxX),
+        maxY,
+      ),
+    );
+
+    for (var i = 0; i < 5; i++) {
+      final index = ((values.length - 1) * i / 4).round();
+      final tp = TextPainter(
+        text: TextSpan(text: DateFormat('h:mm').format(times[index]), style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      final limit = size.width - tp.width;
+      final x = limit <= 0 ? 0.0 : (xOf(index) - tp.width / 2).clamp(0.0, limit);
+      tp.paint(canvas, Offset(x, size.height - tp.height));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparkPainter oldDelegate) =>
+      oldDelegate.values != values || oldDelegate.label != label || oldDelegate.index != index || oldDelegate.marks.length != marks.length || oldDelegate.progress != progress;
 }

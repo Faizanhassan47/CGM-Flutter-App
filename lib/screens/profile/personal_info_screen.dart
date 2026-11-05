@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/pill_button.dart';
@@ -20,6 +21,9 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   late final TextEditingController phoneController;
   late final TextEditingController dateOfBirthController;
   String? selectedGender;
+  late String selectedUnit;
+  late final TextEditingController lowController;
+  late final TextEditingController highController;
 
   @override
   void initState() {
@@ -35,6 +39,13 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     selectedGender = widget.controller.gender.isEmpty
         ? null
         : widget.controller.gender;
+    selectedUnit = widget.controller.preferredGlucoseUnit;
+    lowController = TextEditingController(
+      text: widget.controller.targetLow.round().toString(),
+    );
+    highController = TextEditingController(
+      text: widget.controller.targetHigh.round().toString(),
+    );
   }
 
   @override
@@ -43,6 +54,8 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
     emailController.dispose();
     phoneController.dispose();
     dateOfBirthController.dispose();
+    lowController.dispose();
+    highController.dispose();
     super.dispose();
   }
 
@@ -75,7 +88,13 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
             ? null
             : dateOfBirthController.text.trim(),
         selectedGender: selectedGender,
+        unit: selectedUnit,
       );
+      final low = double.tryParse(lowController.text.trim());
+      final high = double.tryParse(highController.text.trim());
+      if (low != null && high != null && low < high) {
+        await widget.controller.saveGlucoseTargetRange(low: low, high: high);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Personal information updated!')),
@@ -93,32 +112,19 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(
-            Icons.chevron_left,
-            color: AppTheme.darkPurple,
-            size: 28,
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Personal Info',
-          style: TextStyle(
-            color: AppTheme.darkPurple,
-            fontWeight: FontWeight.w800,
-            fontSize: 20,
-          ),
-        ),
-      ),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 20),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 10),
+              PageTopBar(
+                title: 'Personal info',
+                subtitle: 'Name, contact, and health details',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+              const SizedBox(height: 16),
               Center(
                 child: Stack(
                   children: [
@@ -220,7 +226,42 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                     .toList(),
                 onChanged: (value) => setState(() => selectedGender = value),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
+              const Text(
+                'Glucose unit',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.darkPurple),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: selectedUnit,
+                decoration: const InputDecoration(labelText: 'Preferred unit'),
+                items: const ['mg/dL', 'mmol/L']
+                    .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) setState(() => selectedUnit = value);
+                },
+              ),
+              const SizedBox(height: 28),
+              const Text(
+                'Target glucose range',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.darkPurple),
+              ),
+              const SizedBox(height: 8),
+              CustomUnderlineField(
+                controller: lowController,
+                label: 'Target low',
+                hintText: '90',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              CustomUnderlineField(
+                controller: highController,
+                label: 'Target high',
+                hintText: '130',
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 24),
 
               PillButton(
                 variant: PillButtonVariant.cyan,

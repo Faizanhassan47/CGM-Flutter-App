@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/pill_button.dart';
 
@@ -122,28 +123,19 @@ class _SleepMonitoringScreenState extends State<SleepMonitoringScreen> {
     final report = c.overnightReport;
 
     return Scaffold(
-      backgroundColor: AppPalette.hexFFF8F9FE,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.primaryPurple),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Sleep & Overnight Monitoring',
-          style: TextStyle(
-            color: AppTheme.textDark,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: AppInsets.all20,
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            PageTopBar(
+              title: 'Sleep',
+              subtitle: 'Overnight glucose monitoring',
+              leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+            ),
+            const SizedBox(height: 16),
             // Clinical Overview Banner
             _buildInfoCard(),
             const SizedBox(height: 18),
@@ -179,6 +171,7 @@ class _SleepMonitoringScreenState extends State<SleepMonitoringScreen> {
             const SizedBox(height: 24),
           ],
         ),
+      ),
       ),
     );
   }

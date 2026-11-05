@@ -75,7 +75,10 @@ class _LoginScreenState extends State<LoginScreen> {
         photoUrl: account.photoUrl,
       );
     } catch (e) {
-      setState(() => validationError = e.toString());
+      final raw = e.toString();
+      setState(() => validationError = raw.contains('ApiException: 10')
+          ? 'Google sign-in is not set up for this install. Add this app’s SHA-1 in Firebase, or sign in with email.'
+          : 'Google sign-in failed. Try again, or sign in with email.');
     }
   }
 

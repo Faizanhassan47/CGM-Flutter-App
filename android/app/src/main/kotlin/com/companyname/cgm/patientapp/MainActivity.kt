@@ -1,4 +1,4 @@
-package com.companyname.cgm.patientapp
+package com.aima.circle
  
 import io.flutter.embedding.android.FlutterActivity
  

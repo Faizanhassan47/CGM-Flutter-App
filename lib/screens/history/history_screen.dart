@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
+import '../../widgets/page_top_bar.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.controller});
@@ -135,15 +136,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // Fallback demo readings if currently empty
     final hasRealData = samplesForView.isNotEmpty;
-    final readings = hasRealData
-        ? samplesForView.reversed.toList()
-        : _generateFallbackReadings();
+    final readings = hasRealData ? samplesForView.reversed.toList() : <GlucoseSample>[];
 
     // Calculate metrics
     final values = readings.map((r) => (r.value! * 18.0182).round()).toList();
     final avg = values.isNotEmpty
         ? (values.reduce((a, b) => a + b) / values.length).round()
-        : 113;
+        : 0;
     final highest = values.isNotEmpty
         ? values.reduce((a, b) => a > b ? a : b)
         : 119;
@@ -179,7 +178,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         : 100;
 
     return Scaffold(
-      backgroundColor: AppPalette.hexFFFBF9FD,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
           color: AppTheme.primaryPurple,
@@ -201,9 +200,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
               // Glucose Trend Chart Card
               _buildGlucoseTrendCard(
-                samples: hasRealData
-                    ? samplesForView
-                    : _generateFallbackSamplesForChart(),
+                samples: hasRealData ? samplesForView : const <GlucoseSample>[],
                 lowTarget: lowTarget,
                 highTarget: highTarget,
                 startTime: selectedFilter == 'Today'
@@ -237,7 +234,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const SizedBox(height: 24),
 
               // Daily Summary Metrics Card
-              _buildDailySummarySection(
+              if (hasRealData) _buildDailySummarySection(
                 avg: avg,
                 tir: tir,
                 highest: highest,
@@ -257,59 +254,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // 1. Top Header
   // ===========================================================================
   Widget _buildTopHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'History',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
-                letterSpacing: -0.5,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'View your glucose data and past readings.',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: AppPalette.hexFF7E6E91,
-              ),
-            ),
-          ],
-        ),
-        InkWell(
-          onTap: _openCalendarPicker,
-          borderRadius: AppRadii.r14,
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: AppRadii.r14,
-              border: Border.all(color: AppPalette.hexFFECE6F5),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.black.withValues(alpha: 0.03),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.calendar_month_outlined,
-              color: AppPalette.hexFF5E2B97,
-              size: 22,
-            ),
-          ),
-        ),
-      ],
+    return PageTopBar(
+      title: 'History',
+      subtitle: 'View your glucose data and past readings.',
+      trailing: PageTopAction(
+        tooltip: 'Calendar',
+        icon: Icons.calendar_month_outlined,
+        onPressed: _openCalendarPicker,
+      ),
     );
   }
 
@@ -331,14 +283,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(
-              color: AppPalette.hexFFF3EDF9,
+            decoration: const BoxDecoration(
+              color: AppColors.primarySoft,
               shape: BoxShape.circle,
-              border: Border.all(color: AppPalette.hexFFEADBFA),
             ),
             child: const Icon(
               Icons.chevron_left_rounded,
-              color: AppPalette.hexFF5E2B97,
+              color: AppColors.primary,
               size: 22,
             ),
           ),
@@ -369,27 +320,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppPalette.hexFF5E2B97
-                            : AppColors.surface,
-                        borderRadius: AppRadii.r16,
-                        border: Border.all(
-                          color: isSelected
-                              ? AppPalette.hexFF5E2B97
-                              : AppPalette.hexFFECE6F5,
-                          width: 1.2,
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: AppColors.primary.withValues(
-                                    alpha: 0.25,
-                                  ),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ]
-                            : [],
+                        color: isSelected ? AppColors.primary : AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(18),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -400,8 +332,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
                               color: isSelected
-                                  ? AppColors.white70
-                                  : AppPalette.hexFF7E6E91,
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -412,7 +344,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               fontWeight: FontWeight.w800,
                               color: isSelected
                                   ? AppColors.surface
-                                  : AppPalette.hexFF2E1A47,
+                                  : AppColors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -422,7 +354,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? AppColors.surface
-                                  : AppPalette.hexFF5E2B97,
+                                  : AppColors.primary,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -444,14 +376,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(
-              color: AppPalette.hexFFF3EDF9,
+            decoration: const BoxDecoration(
+              color: AppColors.primarySoft,
               shape: BoxShape.circle,
-              border: Border.all(color: AppPalette.hexFFEADBFA),
             ),
             child: const Icon(
               Icons.chevron_right_rounded,
-              color: AppPalette.hexFF5E2B97,
+              color: AppColors.primary,
               size: 22,
             ),
           ),
@@ -483,34 +414,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   vertical: 8.5,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppPalette.hexFF00B4D8
-                      : AppColors.surface,
+                  color: isSelected ? AppColors.primary : AppColors.primarySoft,
                   borderRadius: AppRadii.r22,
-                  border: Border.all(
-                    color: isSelected
-                        ? AppPalette.hexFF00B4D8
-                        : AppPalette.hexFFECE6F5,
-                    width: 1.2,
-                  ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ]
-                      : [],
                 ),
                 child: Text(
                   filter,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: isSelected
-                        ? AppColors.surface
-                        : AppPalette.hexFF4A3E5C,
+                    color: isSelected ? AppColors.surface : AppColors.textSecondary,
                   ),
                 ),
               ),
@@ -536,7 +448,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadii.r22,
-        border: Border.all(color: AppPalette.hexFFECE6F5),
+        border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
             color: AppColors.black.withValues(alpha: 0.02),
@@ -579,7 +491,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // Custom Painted Trend Chart with Target Corridor
           SizedBox(
             height: 160,
-            child: CustomPaint(
+            child: samples.length < 2
+                ? const Center(
+                    child: Text(
+                      'No readings for this period',
+                      style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                    ),
+                  )
+                : CustomPaint(
               painter: _HistoryTrendPainter(
                 samples: samples,
                 startTime: startTime,
@@ -631,7 +550,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               children: [
                 _buildLegendBullet(
                   'In target (${lowTarget.round()}${highTarget.round()})',
-                  AppPalette.hexFF00B4D8,
+                  AppColors.primary,
                 ),
                 const SizedBox(width: 14),
                 _buildLegendBullet(
@@ -695,7 +614,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadii.r22,
-        border: Border.all(color: AppPalette.hexFFECE6F5),
+        border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
             color: AppColors.black.withValues(alpha: 0.02),
@@ -1135,7 +1054,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadii.r16,
-        border: Border.all(color: AppPalette.hexFFECE6F5),
+        border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
             color: AppColors.black.withValues(alpha: 0.02),
@@ -1355,14 +1274,14 @@ class _HistoryTrendPainter extends CustomPainter {
         canvas.drawCircle(
           points.first,
           5,
-          Paint()..color = AppPalette.hexFF00B4D8,
+          Paint()..color = AppColors.primary,
         );
       }
       return;
     }
 
     final curvePaint = Paint()
-      ..color = AppPalette.hexFF00B4D8
+      ..color = AppColors.primary
       ..strokeWidth = 2.4
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -1379,11 +1298,11 @@ class _HistoryTrendPainter extends CustomPainter {
 
     // Latest dot
     final last = points.last;
-    canvas.drawCircle(last, 4.5, Paint()..color = AppPalette.hexFF00B4D8);
+    canvas.drawCircle(last, 4.5, Paint()..color = AppColors.primary);
     canvas.drawCircle(
       last,
       8,
-      Paint()..color = AppPalette.hexFF00B4D8.withValues(alpha: 0.25),
+      Paint()..color = AppColors.primary.withValues(alpha: 0.25),
     );
   }
 

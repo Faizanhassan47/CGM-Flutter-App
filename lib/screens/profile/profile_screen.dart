@@ -5,13 +5,12 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
+import '../../widgets/page_top_bar.dart';
 import 'family_circle_screen.dart';
 import 'linked_device_screen.dart';
-import 'notification_preferences_screen.dart';
 import 'personal_info_screen.dart';
 import 'privacy_security_dialog.dart';
-import '../wellness/meal_reminders_screen.dart';
-import '../wellness/water_reminders_screen.dart';
+import '../reports/reports_screen.dart';
 import 'diet_assistant_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -95,25 +94,15 @@ class ProfileScreen extends StatelessWidget {
     final tempDisplay = '${tempVal.toStringAsFixed(1)}°C (Normal)';
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
             // Header
-            const Text(
-              'Profile & Settings',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.darkPurple,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Manage your profile, device and app preferences.',
-              style: TextStyle(fontSize: 13.5, color: AppTheme.textMuted),
+            const PageTopBar(
+              title: 'Profile',
+              subtitle: 'Manage your profile, device and app preferences.',
             ),
             const SizedBox(height: 20),
 
@@ -501,25 +490,13 @@ class ProfileScreen extends StatelessWidget {
                 //     ),
                     _buildDivider(),
                     _buildSettingsTile(
-                      icon: Icons.restaurant_outlined,
-                      title: 'Meal Reminders',
-                      subtitle: 'Manage breakfast, lunch and custom meals',
+                      icon: Icons.bar_chart_rounded,
+                      title: 'Reports',
+                      subtitle: 'Download your CGM data and insights',
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) =>
-                              MealRemindersScreen(api: controller.api),
-                        ),
-                      ),
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      icon: Icons.water_drop_outlined,
-                      title: 'Water Reminders',
-                      subtitle: 'Manage hydration intervals and quiet hours',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              WaterRemindersScreen(api: controller.api),
+                              ReportsScreen(controller: controller),
                         ),
                       ),
                     ),
@@ -561,44 +538,6 @@ class ProfileScreen extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (_) =>
                                 LinkedDeviceScreen(controller: controller),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      icon: Icons.access_time_rounded,
-                      title: 'Glucose Unit',
-                      subtitle: 'Choose your preferred unit',
-                      trailingText: controller.preferredGlucoseUnit,
-                      onTap: () {
-                        _showUnitDialog(context);
-                      },
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      icon: Icons.track_changes_rounded,
-                      title: 'Target Glucose Range',
-                      subtitle:
-                          'Day target: ${controller.targetLow.round()} ${controller.targetHigh.round()} ${controller.preferredGlucoseUnit}',
-                      trailingText:
-                          '${controller.targetLow.round()} - ${controller.targetHigh.round()}',
-                      onTap: () {
-                        _showTargetRangeDialog(context);
-                      },
-                    ),
-
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      icon: Icons.notifications_none_rounded,
-                      title: 'Notification Preferences',
-                      subtitle: 'Manage alerts and reminders',
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => NotificationPreferencesScreen(
-                              controller: controller,
-                            ),
                           ),
                         );
                       },
@@ -743,10 +682,10 @@ class ProfileScreen extends StatelessWidget {
             Container(
               padding: AppInsets.all8,
               decoration: const BoxDecoration(
-                color: AppTheme.lightPurpleBg,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: AppTheme.primaryPurple, size: 20),
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.all(Radius.circular(14)),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(

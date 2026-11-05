@@ -135,7 +135,10 @@ class _SignupScreenState extends State<SignupScreen> {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
-      setState(() => validationError = e.toString());
+      final raw = e.toString();
+      setState(() => validationError = raw.contains('ApiException: 10')
+          ? 'Google sign-in is not set up for this install. Add this app’s SHA-1 in Firebase, or sign up with email.'
+          : 'Google sign-in failed. Try again, or sign up with email.');
     }
   }
 

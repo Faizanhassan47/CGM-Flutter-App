@@ -625,6 +625,10 @@ class ApiService {
     await put('api/Alerts/$alertId/read', const {});
   }
 
+  Future<void> clearAlertHistory() async {
+    await _send('DELETE', 'api/Alerts/history');
+  }
+
   /// Fetch user-configured alert threshold rules.
   Future<List<dynamic>> getAlertRules() async {
     final res = await get('api/alert-rules');
@@ -917,6 +921,17 @@ class ApiService {
           ))
           as List<dynamic>;
   Future<void> deleteWater(int id) async => delete('api/wellness/water/$id');
+  Future<List<dynamic>> getActivities({String? from, String? to}) async =>
+      (await get(
+            'api/wellness/activities',
+            query: {if (from != null) 'from': from, if (to != null) 'to': to},
+          ))
+          as List<dynamic>;
+  Future<Map<String, dynamic>> createActivity(
+    Map<String, dynamic> activity,
+  ) async => _map(await post('api/wellness/activities', activity));
+  Future<void> deleteActivity(int id) async =>
+      delete('api/wellness/activities/$id');
 
   // ===========================================================================
   // Internal Response Parsers

@@ -3,7 +3,7 @@ import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/pill_button.dart';
-import 'device_setup_screen.dart';
+import 'pairing_guide_screen.dart';
 
 class PatientProfileSetupScreen extends StatefulWidget {
   const PatientProfileSetupScreen({super.key, required this.controller});
@@ -140,11 +140,7 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
       );
 
       if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DeviceSetupScreen(controller: widget.controller),
-          ),
-        );
+        await openDeviceSetup(context, widget.controller);
       }
     } catch (e) {
       if (!mounted) return;

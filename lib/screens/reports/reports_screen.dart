@@ -7,6 +7,7 @@ import '../../core/app_theme.dart';
 import '../../services/report_pdf_service.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
+import '../../widgets/page_top_bar.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key, required this.controller});
@@ -486,79 +487,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // Top Header
   // ===========================================================================
   Widget _buildTopHeader(BuildContext context) {
-    return Row(
-      children: [
-        // Circle logo
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppPalette.hexFFEFEBF6, width: 1.2),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryPurple.withValues(alpha: 0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          padding: AppInsets.all5,
-          child: Image.asset(
-            'assets/images/circle_mark.png',
-            semanticLabel: 'Circle Logo',
-          ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'Export Report',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.darkPurple,
-                  letterSpacing: -0.4,
-                ),
-              ),
-              SizedBox(height: 2),
-              Text(
-                'Download your CGM data and insights.',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: AppTheme.textMuted,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        // Back / Action Button
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: AppPalette.hexFFF2EEF9,
-            borderRadius: AppRadii.r12,
-          ),
-          child: IconButton(
-            icon: const Icon(
-              Icons.chevron_left_rounded,
-              color: AppTheme.primaryPurple,
-              size: 24,
-            ),
-            padding: EdgeInsets.zero,
-            onPressed: () {
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-            },
-          ),
-        ),
-      ],
+    return PageTopBar(
+      title: 'Export Report',
+      subtitle: 'Download your CGM data and insights.',
+      leading: PageTopAction(
+        icon: Icons.chevron_left,
+        onPressed: () {
+          if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+        },
+      ),
     );
   }
 

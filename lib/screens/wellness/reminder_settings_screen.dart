@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../core/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../services/notification_service.dart';
 import 'meal_reminders_screen.dart';
 import 'water_reminders_screen.dart';
@@ -74,8 +76,19 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     if (loading)
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     return Scaffold(
-      appBar: AppBar(title: const Text('Reminder Settings')),
-      body: ListView(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: PageTopBar(
+                title: 'Reminders',
+                subtitle: 'Meal and water schedules',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+            ),
+            Expanded(child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           ListTile(
@@ -224,6 +237,10 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
             child: Text(saving ? 'Saving…' : 'Save reminders'),
           ),
         ],
+      ),
+            ),
+          ],
+        ),
       ),
     );
   }

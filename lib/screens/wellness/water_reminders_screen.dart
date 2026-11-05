@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../core/app_theme.dart';
 import '../../services/api_service.dart';
+import '../../widgets/page_top_bar.dart';
 import '../../services/notification_service.dart';
-import 'wellness_history_screen.dart';
 
 class WaterRemindersScreen extends StatefulWidget {
-  const WaterRemindersScreen({super.key, required this.api});
+  const WaterRemindersScreen({super.key, required this.api, this.embedded = false});
   final ApiService api;
+  final bool embedded;
 
   @override
   State<WaterRemindersScreen> createState() => _WaterRemindersScreenState();
@@ -150,29 +152,17 @@ class _WaterRemindersScreenState extends State<WaterRemindersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (loading) {
+      const spinner = Center(child: CircularProgressIndicator());
+      return widget.embedded ? spinner : const Scaffold(body: spinner);
+    }
     final interval =
         int.tryParse('${settings['waterIntervalMinutes'] ?? 120}') ?? 120;
     final goal = int.tryParse(goalController.text) ?? 0;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Water Reminders')),
-      body: ListView(
+    final content = ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         children: [
           _hero(goal),
-          const SizedBox(height: 16),
-          _toggleCard(),
-          OutlinedButton.icon(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => WellnessHistoryScreen(api: widget.api),
-              ),
-            ),
-            icon: const Icon(Icons.history),
-            label: const Text('View water history'),
-          ),
           const SizedBox(height: 26),
           const Text(
             'Reminder interval',
@@ -272,6 +262,24 @@ class _WaterRemindersScreenState extends State<WaterRemindersScreen> {
             ),
           ),
         ],
+      );
+    if (widget.embedded) return content;
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: PageTopBar(
+                title: 'Water',
+                subtitle: 'Goal, interval, and quiet hours',
+                leading: PageTopAction(icon: Icons.chevron_left, onPressed: () => Navigator.pop(context)),
+              ),
+            ),
+            Expanded(child: content),
+          ],
+        ),
       ),
     );
   }
@@ -316,28 +324,6 @@ class _WaterRemindersScreenState extends State<WaterRemindersScreen> {
     ),
   );
 
-  Widget _toggleCard() => Card(
-    child: SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-      secondary: const CircleAvatar(
-        backgroundColor: Color(0xFFDDF0FF),
-        foregroundColor: blue,
-        child: Icon(Icons.notifications_active_outlined),
-      ),
-      title: const Text(
-        'Water reminders',
-        style: TextStyle(fontWeight: FontWeight.w800),
-      ),
-      subtitle: Text(
-        settings['waterEnabled'] != false
-            ? 'Reminders are active'
-            : 'Reminders are paused',
-      ),
-      value: settings['waterEnabled'] != false,
-      activeColor: blue,
-      onChanged: (value) => setState(() => settings['waterEnabled'] = value),
-    ),
-  );
 
   Widget _quietCard() => Card(
     child: Column(
