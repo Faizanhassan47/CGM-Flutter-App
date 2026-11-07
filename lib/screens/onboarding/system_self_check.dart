@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../core/app_config.dart';
 import '../../core/app_theme.dart';
 
 class PhoneReadiness {
@@ -61,7 +62,8 @@ Future<PhoneReadiness> readPhoneReadiness() async {
     notes = (await Permission.notification.status).isGranted;
   } catch (_) {}
   try {
-    final result = await InternetAddress.lookup('aima.gms-world.com')
+    final host = Uri.parse(AppConfig.apiBaseUrl).host;
+    final result = await InternetAddress.lookup(host)
         .timeout(const Duration(seconds: 3));
     net = result.isNotEmpty && result.first.rawAddress.isNotEmpty;
   } catch (_) {}

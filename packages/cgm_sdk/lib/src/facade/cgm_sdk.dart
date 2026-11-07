@@ -89,6 +89,8 @@ class CgmSdk {
             ? RealCgmBleGate(
                 savePeripheralId: c.algoStore.savePeripheralId,
                 readPeripheralId: c.algoStore.readPeripheralId,
+                readGlsLastSequence: c.algoStore.readGlsLastSequence,
+                saveGlsLastSequence: c.algoStore.saveGlsLastSequence,
               )
             : MockCgmBleGate());
     c.adapter =

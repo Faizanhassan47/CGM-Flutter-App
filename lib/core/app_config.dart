@@ -1,11 +1,10 @@
+import 'package:flutter/services.dart';
+
 class AppConfig {
   const AppConfig._();
 
-  /// Live Circle API. Fixed so a phone build cannot call localhost.
-  static const String apiBaseUrl = 'https://aima.gms-world.com/';
-
-  /// Realtime gateway on the same host.
-  static const String wsUrl = 'https://aima.gms-world.com/';
+  static String apiBaseUrl = '';
+  static String wsUrl = '';
 
   static const String defaultLanguage = String.fromEnvironment(
     'APP_DEFAULT_LANGUAGE',
@@ -16,4 +15,24 @@ class AppConfig {
     'APP_ENV',
     defaultValue: 'development',
   );
+
+  static Future<void> load() async {
+    final raw = await rootBundle.loadString('.env');
+    final values = <String, String>{};
+    for (final line in raw.split(RegExp(r'\r?\n'))) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+      final split = trimmed.indexOf('=');
+      if (split <= 0) continue;
+      values[trimmed.substring(0, split).trim()] = trimmed.substring(split + 1).trim();
+    }
+    final api = values['CGM_API_BASE_URL'] ?? '';
+    final ws = values['CGM_WS_URL'] ?? '';
+    if (api.isEmpty) {
+      throw StateError('CGM_API_BASE_URL is missing from .env');
+    }
+    String withSlash(String value) => value.endsWith('/') ? value : '$value/';
+    apiBaseUrl = withSlash(api);
+    wsUrl = withSlash(ws.isEmpty ? api : ws);
+  }
 }

@@ -12,6 +12,7 @@ export 'src/db/converters/converters.dart';
 export 'src/ble/ble_frame_codec.dart';
 export 'src/ble/ble_link_tuning.dart';
 export 'src/ble/cgm_command.dart';
+export 'src/ble/gls_protocol.dart';
 export 'src/ble/fbp_ble_adapter_monitor.dart';
 export 'src/ble/real_cgm_ble_gate.dart';
 export 'src/algorithm/algorithm_gateway.dart';

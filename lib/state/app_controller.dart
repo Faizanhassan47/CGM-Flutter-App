@@ -1107,6 +1107,27 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<BackendBinding?> _ensureBinding(WearInfo wear) async {
+    final existing = _binding ?? await api.storedBinding();
+    if (existing != null) {
+      _binding = existing;
+      return existing;
+    }
+    try {
+      _binding = await api.activateDevice(
+        deviceSerial: wear.transmitterSn ?? wear.deviceId,
+        sensorSerial: wear.sensorSn ?? wear.deviceId,
+        form: wear.form,
+        bluetoothName: wear.bleId,
+        batteryMv: deviceStatus?.batteryMv,
+      );
+      return _binding;
+    } catch (e) {
+      debugPrint('[GLUCOSE-UPLOAD] binding failed: $e');
+      return null;
+    }
+  }
+
   Future<void> _upload(List<GlucoseSample> samples) async {
     // Cached SDK samples may be emitted during startup even when no sensor is
     // currently connected. Do not call the monitoring API in that state.
@@ -1124,7 +1145,7 @@ class AppController extends ChangeNotifier {
       debugPrint('[GLUCOSE-UPLOAD] skipped: no current wear');
       return;
     }
-    final binding = _binding ?? await api.storedBinding();
+    final binding = await _ensureBinding(currentWear);
     if (binding == null) {
       debugPrint('[GLUCOSE-UPLOAD] skipped: no backend sensor binding');
       return;

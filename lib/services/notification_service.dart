@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'api_service.dart';
+import 'wellness_notification_actions.dart';
 
 /// Top-level background message handler for FCM.
 /// Must be an entry-point function outside of any class.
@@ -107,9 +108,8 @@ class NotificationService {
     );
     await _localNotifications.initialize(
       settings: initSettings,
-      onDidReceiveNotificationResponse: (details) {
-        debugPrint('[Notification] User tapped: ${details.payload}');
-      },
+      onDidReceiveNotificationResponse: wellnessNotificationAction,
+      onDidReceiveBackgroundNotificationResponse: wellnessNotificationAction,
     );
     if (!kIsWeb && Platform.isAndroid) {
       final androidPlugin = _localNotifications
@@ -352,9 +352,9 @@ class NotificationService {
               'Time for ${schedule['customName'] ?? schedule['mealType'] ?? 'your meal'}',
           body: 'It\'s time for your scheduled meal. You can log it in Circle.',
           scheduledDate: when,
-          notificationDetails: details,
+          notificationDetails: mealNotificationDetails(),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          payload: 'wellness:meal',
+          payload: 'wellness:meal:${'${schedule['mealType'] ?? 'snack'}'.toLowerCase()}',
         );
       }
       if (isWaterEnabled) {
@@ -381,9 +381,9 @@ class NotificationService {
           await _localNotifications.zonedSchedule(
             id: id++,
             title: 'Hydration reminder',
-            body: 'Optional reminder to log water if you choose.',
+            body: 'Time to drink water. How much water did you drink?',
             scheduledDate: when,
-            notificationDetails: details,
+            notificationDetails: waterNotificationDetails(),
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             payload: 'wellness:water',
           );

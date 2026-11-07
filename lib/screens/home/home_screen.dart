@@ -242,6 +242,8 @@ class HomeScreen extends StatelessWidget {
                 : scannedAt == null
                 ? 'No reading yet'
                 : 'Scanned at ${DateFormat.jm().format(scannedAt)}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 13, color: !isConnected ? AppColors.danger : AppColors.textSecondary, fontWeight: !isConnected ? FontWeight.w700 : FontWeight.w500),
           ),
         ),
@@ -269,7 +271,7 @@ class HomeScreen extends StatelessWidget {
 
   Widget _todayChart(BuildContext context, double lowT, double highT, bool isConnected, bool mmol) {
     return _HomeChart(
-      samples: isConnected ? controller.history : <GlucoseSample>[],
+      samples: controller.history,
       low: lowT,
       high: highT,
       mmol: mmol,
@@ -342,8 +344,14 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
           const Spacer(),
-          Text(value, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: valueColor, height: 1)),
-          if (note.isNotEmpty) Text(note, style: TextStyle(fontSize: 12, color: titleColor)),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: value.length > 6 ? 18 : 26, fontWeight: FontWeight.w800, color: valueColor, height: 1),
+          ),
+          if (note.isNotEmpty)
+            Text(note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: titleColor)),
         ],
       ),
     );
@@ -1882,14 +1890,14 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
           const SizedBox(height: 8),
           SizedBox(
             height: range == 0 && widget.connected && values.isNotEmpty ? 250 : 190,
-            child: !widget.connected
+            child: range == 0 && !widget.connected
                 ? GestureDetector(
                     onTap: widget.onConnect,
                     child: const Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
-                        'Device is not connected. Connect a sensor to see readings.',
+                        'Device is not connected. Open 1h, 6h, 12h, or 24h for earlier readings.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700, height: 1.35),
                       ),

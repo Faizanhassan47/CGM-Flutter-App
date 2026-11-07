@@ -12,11 +12,13 @@ import 'package:cgm_sdk/src/ble/ble_link_tuning.dart';
 import 'package:cgm_sdk/src/collection/device_clock_skew.dart';
 import 'package:cgm_sdk/src/ble/ble_frame_codec.dart';
 import 'package:cgm_sdk/src/ble/cgm_command.dart';
+import 'package:cgm_sdk/src/ble/gls_protocol.dart';
 
 /// CGM equipment BLE Real machine realization（flutter_blue_plus）。
 ///
-/// by broadcast name `CGM-{MACNo colon}` scan match（iOS Can’t get it MAC），Subscribe after connecting 0xFFF1，
-/// After writing the command, it will respond with the same command number. Binding activation is a single packet of short frames, and the history of multiple frames is 0xFFF2。
+/// Dual protocol:
+/// - Prefer Bluetooth SIG Glucose Service (GLS 0x1808) when present (GLP Collector).
+/// - Otherwise use proprietary FFF0 / 0xB0 command frames.
 class RealCgmBleGate implements CgmBleGate {
   RealCgmBleGate({
     this.scanTimeout = const Duration(seconds: 10),
@@ -25,6 +27,8 @@ class RealCgmBleGate implements CgmBleGate {
     this.commandTimeout = const Duration(seconds: 8),
     this.savePeripheralId,
     this.readPeripheralId,
+    this.readGlsLastSequence,
+    this.saveGlsLastSequence,
   });
 
   final Duration scanTimeout;
@@ -50,6 +54,8 @@ class RealCgmBleGate implements CgmBleGate {
   /// Android superior `remoteId` that is MAC，By the way, save every time 10 Scan in seconds。
   final Future<void> Function(String remoteId)? savePeripheralId;
   final Future<String?> Function()? readPeripheralId;
+  final Future<int?> Function()? readGlsLastSequence;
+  final Future<void> Function(int sequence)? saveGlsLastSequence;
 
   BluetoothDevice? _device;
 
@@ -87,9 +93,26 @@ class RealCgmBleGate implements CgmBleGate {
 
   static final Guid _fff1Uuid = Guid(AppConstants.bleCharFff1);
 
+  /// `gls` | `fff0` | `cgm181f` | `unsupported`
+  String _protocolMode = 'fff0';
+  BluetoothCharacteristic? _glsMeasurement;
+  BluetoothCharacteristic? _glsContext;
+  BluetoothCharacteristic? _glsRacp;
+  int _glsLatestSn = 0;
+  bool _glsMeasuring = false;
+  bool _glsRacpInProgress = false;
+  Completer<GlsRacpResponse?>? _glsRacpWait;
+  final Map<int, GlsMeasurementContext> _glsContextBySeq = {};
+  GlsDeviceInfo? _glsDeviceInfo;
+
+  bool get usesGlsProtocol => _protocolMode == 'gls';
+  GlsDeviceInfo? get glsDeviceInfo => _glsDeviceInfo;
+
   /// Check the system for connected devices service filter, see [_scanForDevice] Description in。
   static final List<Guid> _systemDeviceServices = [
     Guid(AppConstants.bleServiceUuid),
+    Guid(GlsUuids.service),
+    Guid(GlsUuids.cgmService),
     Guid('1800'),
   ];
 
@@ -168,7 +191,7 @@ class RealCgmBleGate implements CgmBleGate {
         _log('requestMtu fail(neglect): $e');
       }
 
-      // Once connected, it will be considered successful and the service will not be stuck. UUID（Firmware varies from company to company); if a failure is found, the connection will not be judged as failed.。
+      // Once connected, discover services. Prefer GLS (0x1808) when present.
       try {
         final services = await device.discoverServices();
         for (final svc in services) {
@@ -181,14 +204,50 @@ class RealCgmBleGate implements CgmBleGate {
             );
           }
         }
+
+        final kind = GlsProtocol.detectProtocol(services.map((s) => s.uuid.str));
+        if (kind == BleProtocolKind.cgm181f) {
+          _protocolMode = 'cgm181f';
+          _log(
+            'Protocol=0x181F Continuous Glucose Monitoring detected. '
+            'Adapter not implemented yet — refusing connection.',
+          );
+          await _safeDisconnect();
+          return false;
+        }
+        if (kind == BleProtocolKind.gls) {
+          BluetoothService? glsService;
+          for (final s in services) {
+            if (GlsProtocol.uuidEndsWith(s.uuid.str, GlsUuids.service)) {
+              glsService = s;
+              break;
+            }
+          }
+          if (glsService != null) {
+            await _attachGls(glsService, allServices: services);
+            return true;
+          }
+        }
+        if (kind == BleProtocolKind.unsupported) {
+          _protocolMode = 'unsupported';
+          _log(
+            'No GLS (0x1808), CGM (0x181F), or FFF0 service found — unsupported sensor',
+          );
+          await _safeDisconnect();
+          return false;
+        }
+
+        _protocolMode = 'fff0';
+        _glsMeasurement = null;
+        _glsContext = null;
+        _glsRacp = null;
         _probeChar = _pickProbeChar(services);
         final picked = _pickChars(services);
         _writeChar = picked.write;
         _notifyChar = picked.notify;
         _log(
-          'write features=${_writeChar?.uuid.str} Notification features=${_notifyChar?.uuid.str}',
+          'Protocol=FFF0 write=${_writeChar?.uuid.str} notify=${_notifyChar?.uuid.str}',
         );
-        // respond with 0xB0 Reports may fall into different notification characteristics. Turn on notifications for all and monitor each one.
         final notifyChars = <BluetoothCharacteristic>[];
         for (final svc in services) {
           for (final c in svc.characteristics) {
@@ -214,8 +273,6 @@ class RealCgmBleGate implements CgmBleGate {
                   v.length >= 3 &&
                   v[0] == CgmCommand.respHead &&
                   v[2] == CgmCommand.cmdMeasureReport;
-              // protocol 6.3：FLASH After the storage is full, the device stops measuring and pushes this item, and then there is no more 0xB0，
-              // The performance is the same as disconnection but reconnection is useless. Let the upper level see it.。
               final isFlashFull = CgmCommand.isFlashOverflowFrame(v);
               _log(
                 'Report frame ${c.uuid.str} len=${v.length} '
@@ -237,7 +294,6 @@ class RealCgmBleGate implements CgmBleGate {
             'Without any notifiable characteristics, the command response is the same as 0xB0 I can’t even receive the measurement report.',
           );
         }
-        // wait CCCD Send the command after it takes effect: Send the command immediately after subscribing on Android race Drop the first reply。
         await Future.delayed(const Duration(milliseconds: 300));
         if (_writeChar == null) {
           _log(
@@ -291,6 +347,236 @@ class RealCgmBleGate implements CgmBleGate {
         } catch (_) {}
         await Future.delayed(const Duration(milliseconds: 600));
       }
+    }
+  }
+
+  Future<void> _attachGls(
+    BluetoothService glsService, {
+    required List<BluetoothService> allServices,
+  }) async {
+    _protocolMode = 'gls';
+    _writeChar = null;
+    _notifyChar = null;
+    _glsMeasurement = null;
+    _glsContext = null;
+    _glsRacp = null;
+    _glsContextBySeq.clear();
+    for (final c in glsService.characteristics) {
+      final u = c.uuid.str;
+      if (GlsProtocol.uuidEndsWith(u, GlsUuids.measurement)) {
+        _glsMeasurement = c;
+      } else if (GlsProtocol.uuidEndsWith(u, GlsUuids.measurementContext)) {
+        _glsContext = c;
+      } else if (GlsProtocol.uuidEndsWith(u, GlsUuids.racp)) {
+        _glsRacp = c;
+      }
+    }
+    await _cancelMeasureSubs();
+    _notifyCharsAll.clear();
+
+    // GLP §6.2: Collector shall bond with the Glucose Sensor.
+    await _ensureGlsBond();
+
+    if (_glsMeasurement != null) {
+      try {
+        await _glsMeasurement!.setNotifyValue(true);
+        _notifyCharsAll.add(_glsMeasurement!);
+        _measureSubs.add(
+          _glsMeasurement!.onValueReceived.listen(_onGlsMeasurement),
+        );
+        _log('GLS Glucose Measurement notifications enabled');
+      } catch (e) {
+        _log('GLS measurement notify failed: $e');
+      }
+    } else {
+      _log('GLS service found but 0x2A18 is missing');
+    }
+
+    if (_glsContext != null) {
+      try {
+        await _glsContext!.setNotifyValue(true);
+        _notifyCharsAll.add(_glsContext!);
+        _measureSubs.add(_glsContext!.onValueReceived.listen(_onGlsContext));
+        _log('GLS Measurement Context notifications enabled');
+      } catch (e) {
+        _log('GLS context notify failed: $e');
+      }
+    }
+
+    if (_glsRacp != null) {
+      try {
+        await _glsRacp!.setNotifyValue(true);
+        _notifyCharsAll.add(_glsRacp!);
+        _measureSubs.add(_glsRacp!.onValueReceived.listen(_onGlsRacp));
+        _log('GLS RACP indications/notifications enabled');
+      } catch (e) {
+        _log('GLS RACP notify failed: $e');
+      }
+    }
+
+    _glsDeviceInfo = await _readDeviceInformation(allServices);
+    if (_glsDeviceInfo != null) {
+      _log(
+        'DIS manufacturer=${_glsDeviceInfo!.manufacturer} '
+        'model=${_glsDeviceInfo!.model} serial=${_glsDeviceInfo!.serial} '
+        'fw=${_glsDeviceInfo!.firmware}',
+      );
+    }
+
+    await Future.delayed(const Duration(milliseconds: 300));
+    _log('Protocol=GLS/GLP Collector (service 0x1808)');
+  }
+
+  Future<void> _ensureGlsBond() async {
+    final device = _device;
+    if (device == null) return;
+    try {
+      if (Platform.isAndroid) {
+        final bonded = await FlutterBluePlus.bondedDevices;
+        final already = bonded.any((d) => d.remoteId == device.remoteId);
+        if (!already) {
+          _log('GLP bonding: creating Android bond…');
+          await device.createBond();
+          _log('GLP bonding: bond created');
+        } else {
+          _log('GLP bonding: already bonded');
+        }
+      } else {
+        // iOS bonding is system-managed; encryption starts with the first secured ATT.
+        _log('GLP bonding: iOS uses system pairing when the sensor requires it');
+      }
+    } catch (e) {
+      _log('GLP bonding failed (continuing; sensor may reject secured attrs): $e');
+    }
+  }
+
+  Future<GlsDeviceInfo?> _readDeviceInformation(
+    List<BluetoothService> services,
+  ) async {
+    BluetoothService? dis;
+    for (final s in services) {
+      if (GlsProtocol.uuidEndsWith(s.uuid.str, GlsUuids.deviceInfo)) {
+        dis = s;
+        break;
+      }
+    }
+    if (dis == null) return null;
+    Future<String?> read(String short) async {
+      for (final c in dis!.characteristics) {
+        if (!GlsProtocol.uuidEndsWith(c.uuid.str, short)) continue;
+        if (!c.properties.read) continue;
+        try {
+          final v = await c.read();
+          final text = String.fromCharCodes(v).trim();
+          return text.isEmpty ? null : text;
+        } catch (_) {
+          return null;
+        }
+      }
+      return null;
+    }
+
+    return GlsDeviceInfo(
+      manufacturer: await read(GlsUuids.manufacturerName),
+      model: await read(GlsUuids.modelNumber),
+      serial: await read(GlsUuids.serialNumber),
+      firmware: await read(GlsUuids.firmwareRevision),
+      hardware: await read(GlsUuids.hardwareRevision),
+    );
+  }
+
+  void _onGlsMeasurement(List<int> v) {
+    final parsed = GlsProtocol.parseMeasurement(v);
+    if (parsed == null) {
+      _log('GLS measurement parse failed: ${_hex(v)}');
+      return;
+    }
+    _glsLatestSn = parsed.sequenceNumber;
+    _glsMeasuring = true;
+    final mg = parsed.glucoseMgDl;
+    if (mg == null) {
+      _log('GLS sequence=${parsed.sequenceNumber} has no concentration');
+      return;
+    }
+    final ctx = _glsContextBySeq.remove(parsed.sequenceNumber);
+    final frame = GlsProtocol.toLegacyB0Frame(
+      glucoseMgDl: mg,
+      sequenceNumber: parsed.sequenceNumber,
+      at: parsed.measuredAt,
+    );
+    _log(
+      'GLS→pipeline seq=${parsed.sequenceNumber} ${mg.toStringAsFixed(1)} mg/dL'
+      '${ctx != null ? " +context(meal=${ctx.meal})" : ""}'
+      '${parsed.contextFollows ? " (context follows)" : ""}',
+    );
+    _measureController.add(frame);
+    unawaited(saveGlsLastSequence?.call(parsed.sequenceNumber) ?? Future.value());
+  }
+
+  void _onGlsContext(List<int> v) {
+    final ctx = GlsProtocol.parseMeasurementContext(v);
+    if (ctx == null) {
+      _log('GLS context parse failed: ${_hex(v)}');
+      return;
+    }
+    _glsContextBySeq[ctx.sequenceNumber] = ctx;
+    if (_glsContextBySeq.length > 64) {
+      final oldest = _glsContextBySeq.keys.reduce((a, b) => a < b ? a : b);
+      _glsContextBySeq.remove(oldest);
+    }
+    _log('GLS context seq=${ctx.sequenceNumber} meal=${ctx.meal}');
+  }
+
+  void _onGlsRacp(List<int> v) {
+    final rsp = GlsProtocol.parseRacpResponse(v);
+    if (rsp == null) {
+      _log('GLS RACP non-response frame: ${_hex(v)}');
+      return;
+    }
+    _log('GLS RACP: ${rsp.message} (req=0x${rsp.requestOpCode.toRadixString(16)})');
+    _glsRacpInProgress = false;
+    final wait = _glsRacpWait;
+    if (wait != null && !wait.isCompleted) wait.complete(rsp);
+  }
+
+  Future<void> _requestGlsRecords() async {
+    final racp = _glsRacp;
+    if (racp == null) return;
+    if (_glsRacpInProgress) {
+      _log('GLS RACP already in progress — skipping');
+      return;
+    }
+    final last = await readGlsLastSequence?.call();
+    final payload = (last == null || last <= 0)
+        ? GlsProtocol.racpReportAll()
+        : GlsProtocol.racpReportGreaterOrEqual(last + 1);
+    _glsRacpInProgress = true;
+    _glsRacpWait = Completer<GlsRacpResponse?>();
+    try {
+      await racp.write(payload, withoutResponse: false);
+      _log(
+        last == null || last <= 0
+            ? 'GLS RACP: Report All Stored Records'
+            : 'GLS RACP: Report records >= ${last + 1}',
+      );
+      final rsp = await _glsRacpWait!.future.timeout(
+        GlsProtocol.procedureTimeout,
+        onTimeout: () {
+          _log('GLS RACP procedure timed out (30s)');
+          return null;
+        },
+      );
+      if (rsp != null && !rsp.isSuccess) {
+        _log('GLS RACP ended with ${rsp.message}');
+      }
+    } catch (e) {
+      _log('GLS RACP write failed: $e');
+      try {
+        await racp.write(GlsProtocol.racpAbort(), withoutResponse: false);
+      } catch (_) {}
+    } finally {
+      _glsRacpInProgress = false;
+      _glsRacpWait = null;
     }
   }
 
@@ -451,12 +737,18 @@ class RealCgmBleGate implements CgmBleGate {
         final hasFff0 = ad.serviceUuids.any(
           (u) => u.str.toLowerCase().contains('fff0'),
         );
+        final hasGls = ad.serviceUuids.any(
+          (u) => GlsProtocol.uuidEndsWith(u.str, GlsUuids.service),
+        );
+        final hasCgm181f = ad.serviceUuids.any(
+          (u) => GlsProtocol.uuidEndsWith(u.str, GlsUuids.cgmService),
+        );
         final isCgmFuzzy =
             advName.toUpperCase().contains('CGM') ||
             platName.toUpperCase().contains('CGM') ||
             advName.toUpperCase().contains('SIMULATOR') ||
             platName.toUpperCase().contains('SIMULATOR');
-        if (matchName || matchMac || hasFff0 || isCgmFuzzy) {
+        if (matchName || matchMac || hasFff0 || hasGls || hasCgm181f || isCgmFuzzy) {
           if (!completer.isCompleted) completer.complete(r.device);
           break;
         }
@@ -490,6 +782,7 @@ class RealCgmBleGate implements CgmBleGate {
 
   @override
   Future<int> readBatteryMv() async {
+    if (usesGlsProtocol) return 3000;
     final resp = await _invoke(
       CgmCommand.buildReadVoltage(),
       CgmCommand.cmdReadVoltage,
@@ -499,6 +792,7 @@ class RealCgmBleGate implements CgmBleGate {
 
   @override
   Future<bool> readInUse() async {
+    if (usesGlsProtocol) return _glsLatestSn > 0;
     final resp = await _invoke(
       CgmCommand.buildReadReset(),
       CgmCommand.cmdReadReset,
@@ -509,6 +803,11 @@ class RealCgmBleGate implements CgmBleGate {
 
   @override
   Future<void> activate(DateTime at) async {
+    if (usesGlsProtocol) {
+      _glsMeasuring = true;
+      await _requestGlsRecords();
+      return;
+    }
     // Activation must go through the complete startup sequence: only send one 0xD1 The device is in ”Measurement”, but the upload period is not set.
     // Didn’t do it either 0xE5 Write back confirmation，SN No increase, no push 0xB0。
     await startMeasureSequence(at);
@@ -516,6 +815,11 @@ class RealCgmBleGate implements CgmBleGate {
 
   @override
   Future<void> startReporting(DateTime at) async {
+    if (usesGlsProtocol) {
+      _glsMeasuring = true;
+      await _requestGlsRecords();
+      return;
+    }
     // protocol 6.1 It should be automatically reported periodically next time 0xB0，This is just a summary of recovery after a long period of silence.：
     // Silence is probably due to the upload cycle not being set, so add it once. 0xC4。
     // Can’t post here 0xD1(keepSn=true)：The firmware does not accept keepSn=1，Still SN cleared, and FLASH history
@@ -548,6 +852,17 @@ class RealCgmBleGate implements CgmBleGate {
   @override
   Future<({bool measuring, int measuredSec, int latestSn})>
   readMeasureState() async {
+    if (usesGlsProtocol) {
+      final s = (
+        measuring: _glsMeasuring || _glsLatestSn > 0,
+        measuredSec: 0,
+        latestSn: _glsLatestSn,
+      );
+      _log(
+        'GLS status: ${s.measuring ? "Measuring" : "Not measured"} SN=${s.latestSn}',
+      );
+      return s;
+    }
     final resp = await _invoke(
       CgmCommand.buildReadLatestSn(),
       CgmCommand.cmdReadLatestSn,
@@ -566,6 +881,11 @@ class RealCgmBleGate implements CgmBleGate {
 
   @override
   Future<String?> readFirmwareVersion() async {
+    if (usesGlsProtocol) {
+      return _glsDeviceInfo?.firmware ??
+          _glsDeviceInfo?.model ??
+          'GLS-V10';
+    }
     final resp = await _invoke(
       CgmCommand.buildReadVersion(),
       CgmCommand.cmdReadVersion,
@@ -805,6 +1125,11 @@ class RealCgmBleGate implements CgmBleGate {
 
   @override
   Future<void> startMeasureSequence(DateTime at) async {
+    if (usesGlsProtocol) {
+      _glsMeasuring = true;
+      await _requestGlsRecords();
+      return;
+    }
     // Timing 0xE5→0xE1→0xC4→0xC0→0xD1，lack 0xE5 Write a reply to the meeting"Measuring SN=0、Don’t push 0xB0"。
     // Failure of the first two read commands will not block subsequent startups.。
 
@@ -1045,6 +1370,16 @@ class RealCgmBleGate implements CgmBleGate {
     await _cancelMeasureSubs();
     _writeChar = null;
     _notifyChar = null;
+    _glsMeasurement = null;
+    _glsContext = null;
+    _glsRacp = null;
+    _glsContextBySeq.clear();
+    _glsDeviceInfo = null;
+    _glsRacpInProgress = false;
+    _glsRacpWait = null;
+    _protocolMode = 'fff0';
+    _glsLatestSn = 0;
+    _glsMeasuring = false;
     _notifyCharsAll.clear();
     _device = null;
     if (device == null) return;

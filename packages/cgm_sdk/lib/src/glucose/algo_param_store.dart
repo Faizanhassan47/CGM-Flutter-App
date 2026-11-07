@@ -56,6 +56,7 @@ class AlgoParamStore {
   /// （Can’t get it MAC），Android that is MAC。It is saved to connect directly without scanning，iOS Background scanning is required
   /// service UUID，Can only rely on handle。
   static const _kPeripheralId = 'device_ble_peripheral_id';
+  static const _kGlsLastSeq = 'gls_last_sequence';
 
   /// Save the factory calibration of this sensor (scan the QR code sensorAttr）。Any one is null Do not write this item。
   Future<void> saveSensorCalibration({
@@ -216,6 +217,39 @@ class AlgoParamStore {
         error: e,
         stackTrace: st,
       );
+      return null;
+    }
+  }
+
+  Future<void> saveGlsLastSequence(int sequence) async {
+    final ts = DateTime.now().toUtc().millisecondsSinceEpoch;
+    try {
+      await _db.batch(
+        (b) => b.insertAllOnConflictUpdate(_db.appMeta, [
+          AppMetaCompanion.insert(
+            key: _kGlsLastSeq,
+            value: Value('$sequence'),
+            updatedAt: ts,
+          ),
+        ]),
+      );
+    } catch (e, st) {
+      developer.log(
+        'GLS last sequence save failed (ignored)',
+        name: 'AlgoParamStore',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Future<int?> readGlsLastSequence() async {
+    try {
+      final row = await (_db.select(
+        _db.appMeta,
+      )..where((t) => t.key.equals(_kGlsLastSeq))).getSingleOrNull();
+      return int.tryParse(row?.value?.trim() ?? '');
+    } catch (_) {
       return null;
     }
   }
