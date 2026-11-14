@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -41,7 +42,7 @@ class ApiService {
   }
 
   final http.Client _client;
-  static const _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = kSecureStorage;
 
   String? _accessToken;
   String? _refreshToken;
@@ -497,6 +498,11 @@ class ApiService {
     try {
       await delete('api/Devices/${binding.deviceId}');
     } catch (_) {}
+    await _storage.delete(key: 'backend_device_id');
+    await _storage.delete(key: 'backend_sensor_id');
+  }
+
+  Future<void> clearBackendBinding() async {
     await _storage.delete(key: 'backend_device_id');
     await _storage.delete(key: 'backend_sensor_id');
   }

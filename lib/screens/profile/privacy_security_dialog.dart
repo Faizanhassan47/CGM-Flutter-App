@@ -57,8 +57,8 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
         : null;
     final newError = next.isEmpty
         ? 'Enter a new password.'
-        : next.length < 6
-        ? 'Password must contain at least 6 characters.'
+        : next.length < 8
+        ? 'Password must contain at least 8 characters.'
         : null;
     final confirmError = confirm.isEmpty
         ? 'Confirm your new password.'
@@ -254,7 +254,7 @@ class _PrivacySecurityModalState extends State<PrivacySecurityModal> {
                   CustomUnderlineField(
                     controller: newPwController,
                     label: 'New password',
-                    hintText: 'At least 6 characters',
+                    hintText: 'At least 8 characters',
                     obscureText: obscureNew,
                     errorText: newPasswordError,
                     onChanged: (_) {

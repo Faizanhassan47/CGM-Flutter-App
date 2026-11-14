@@ -172,9 +172,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final confirm = _confirmPasswordController.text;
     final token = _verifiedToken ?? _otpCode;
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       setState(
-        () => _errorMessage = 'Password must be at least 6 characters long.',
+        () => _errorMessage = 'Password must be at least 8 characters long.',
       );
       return;
     }
@@ -426,7 +426,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       case ForgotStep.newPassword:
         title = 'Create New Password';
         subtitle =
-            'Your identity has been verified! Choose a strong password with at least 6 characters.';
+            'Your identity has been verified! Choose a strong password with at least 8 characters.';
         break;
     }
 

@@ -91,6 +91,32 @@ class AppController extends ChangeNotifier {
   Timer? _uploadQueueTimer;
   bool _uploadQueueFlushing = false;
   static const _uploadQueueKey = 'glucose_upload_queue_v1';
+  static const _secureStore = kSecureStorage;
+
+  Future<List<Map<String, dynamic>>> _readUploadQueue() async {
+    // Migrate legacy plaintext SharedPreferences queue once.
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(_uploadQueueKey);
+    if (legacy != null && legacy.isNotEmpty) {
+      await _secureStore.write(key: _uploadQueueKey, value: legacy);
+      await prefs.remove(_uploadQueueKey);
+    }
+    final raw = await _secureStore.read(key: _uploadQueueKey) ?? '[]';
+    return (jsonDecode(raw) as List)
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  Future<void> _writeUploadQueue(List<Map<String, dynamic>> rows) async {
+    await _secureStore.write(key: _uploadQueueKey, value: jsonEncode(rows));
+  }
+
+  Future<void> _clearUploadQueue() async {
+    await _secureStore.delete(key: _uploadQueueKey);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_uploadQueueKey);
+  }
 
   Future<void> initialize() async {
     loading = true;
@@ -667,6 +693,21 @@ class AppController extends ChangeNotifier {
     await _run(() async {
       await api.logout();
       authenticated = false;
+      wear = null;
+      history = [];
+      latest = null;
+      deviceStatus = null;
+      activeSensor = null;
+      activeDevice = null;
+      _binding = null;
+      alerts = [];
+      family = null;
+      familyMembers = [];
+      await _clearUploadQueue();
+      await api.clearBackendBinding();
+      try {
+        await CgmSdk.unbind();
+      } catch (_) {}
     });
   }
 
@@ -951,8 +992,9 @@ class AppController extends ChangeNotifier {
           },
         );
       } catch (e) {
-        // Fallback for BLE Simulators (PC WinRT Bluetooth / software emulators):
-        // Directly activate on backend so telemetry and live charts work seamlessly!
+        // Debug-only simulator fallback. Never activate a cloud sensor in
+        // release without a verified BLE bind.
+        if (!kDebugMode) rethrow;
         _binding = await api.activateDevice(
           deviceSerial: transmitterSn,
           sensorSerial: sensorSn,
@@ -1201,12 +1243,7 @@ class AppController extends ChangeNotifier {
     int sensorId,
     List<GlucoseSample> samples,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
-    final existing =
-        (jsonDecode(prefs.getString(_uploadQueueKey) ?? '[]') as List)
-            .whereType<Map>()
-            .map((row) => Map<String, dynamic>.from(row))
-            .toList();
+    final existing = await _readUploadQueue();
     final keys = existing
         .map((row) => '${row['sensorId']}:${row['measurementTime']}')
         .toSet();
@@ -1226,8 +1263,10 @@ class AppController extends ChangeNotifier {
       final key = '$sensorId:${row['measurementTime']}';
       if (keys.add(key)) existing.add(row);
     }
-    await prefs.setString(_uploadQueueKey, jsonEncode(existing));
-    debugPrint('[GLUCOSE-UPLOAD] queued=${existing.length}');
+    await _writeUploadQueue(existing);
+    if (kDebugMode) {
+      debugPrint('[GLUCOSE-UPLOAD] queued=${existing.length}');
+    }
     if (existing.length >= 5) {
       await _flushUploadQueue();
     } else {
@@ -1245,12 +1284,7 @@ class AppController extends ChangeNotifier {
       return;
     _uploadQueueFlushing = true;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final queued =
-          (jsonDecode(prefs.getString(_uploadQueueKey) ?? '[]') as List)
-              .whereType<Map>()
-              .map((row) => Map<String, dynamic>.from(row))
-              .toList();
+      final queued = await _readUploadQueue();
       final bySensor = <int, List<Map<String, dynamic>>>{};
       for (final row in queued) {
         bySensor.putIfAbsent(row['sensorId'] as int, () => []).add(row);
@@ -1260,7 +1294,7 @@ class AppController extends ChangeNotifier {
         await api.uploadGlucose(entry.key, batch);
         queued.removeWhere((row) => batch.contains(row));
       }
-      await prefs.setString(_uploadQueueKey, jsonEncode(queued));
+      await _writeUploadQueue(queued);
       if (queued.isNotEmpty) {
         _uploadQueueTimer ??= Timer(const Duration(minutes: 5), () {
           _uploadQueueTimer = null;
@@ -1269,7 +1303,9 @@ class AppController extends ChangeNotifier {
       }
       if (queued.isEmpty) unawaited(loadAlerts());
     } catch (_) {
-      debugPrint('[GLUCOSE-UPLOAD] queue flush failed; readings retained');
+      if (kDebugMode) {
+        debugPrint('[GLUCOSE-UPLOAD] queue flush failed; readings retained');
+      }
     } finally {
       _uploadQueueFlushing = false;
     }

@@ -71,9 +71,9 @@ class _SignupScreenState extends State<SignupScreen> {
       setState(() => validationError = 'Please enter your email address.');
       return;
     }
-    if (password.length < 6) {
+    if (password.length < 8) {
       setState(
-        () => validationError = 'Password must be at least 6 characters.',
+        () => validationError = 'Password must be at least 8 characters.',
       );
       return;
     }

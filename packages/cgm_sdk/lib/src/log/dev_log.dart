@@ -37,6 +37,8 @@ class DevLog extends ChangeNotifier {
 
   /// Remember one thing: into the memory buffer + pass-through `developer.log`（The console can still be pressed tag screen）。
   void add(String tag, String message) {
+    // Release builds must not log PHI / BLE details to logcat or disk.
+    if (!kDebugMode) return;
     final msg = message.length > _maxEntryLen
         ? '${message.substring(0, _maxEntryLen)}…(common ${message.length} character)'
         : message;
@@ -47,12 +49,8 @@ class DevLog extends ChangeNotifier {
         (_totalChars > _maxTotalChars && _entries.length > 1)) {
       _totalChars -= _entries.removeAt(0).message.length;
     }
-    // developer.log Not entering logcat，adb When grabbing the real machine [ble]/[collect] Can’t see the whole film，
-    // debugPrint Enter both modes logcat，So hit both。
     debugPrint('[$tag] $message');
-    if (kDebugMode) {
-      developer.log(message, name: tag);
-    }
+    developer.log(message, name: tag);
     _queueToFile('${_ts(DateTime.now())} [$tag] $msg');
     notifyListeners();
   }
@@ -60,7 +58,7 @@ class DevLog extends ChangeNotifier {
   /// Drop one copy at the same time `Documents/devlog.txt`，Real machine troubleshooting available devicectl Pull directly。
   /// save 500ms Write in batches to avoid writing each item once IO。
   void _queueToFile(String line) {
-    if (_fileDead) return;
+    if (!kDebugMode || _fileDead) return;
     _pending.add(line);
     _flushTimer ??= Timer(const Duration(milliseconds: 500), _flush);
   }

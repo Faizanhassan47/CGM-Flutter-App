@@ -136,7 +136,7 @@ class NotificationService {
     _listenersBound = true;
     _fcm.onTokenRefresh.listen((newToken) {
       _fcmToken = newToken;
-      debugPrint('[FCM] Token refreshed: $newToken');
+      debugPrint('[FCM] Token refreshed');
       unawaited(syncPushToken(apiService: _api, enabled: _pushEnabled));
     });
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -158,7 +158,6 @@ class NotificationService {
     if (_api == null) return;
     try {
       _fcmToken ??= await _fcm.getToken();
-      debugPrint('[FCM] Device Token: $_fcmToken');
       if (_fcmToken == null) return;
       await _api!.registerPushNotificationToken(
         token: _fcmToken!,
@@ -225,7 +224,7 @@ class NotificationService {
       enableVibration: true,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
-      visibility: NotificationVisibility.public,
+      visibility: NotificationVisibility.private,
     );
     const darwinDetails = DarwinNotificationDetails(
       presentAlert: true,

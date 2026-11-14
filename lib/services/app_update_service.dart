@@ -143,13 +143,25 @@ class AppUpdateService {
 
   bool get optionalShown => _optionalShown;
   void markOptionalShown() => _optionalShown = true;
+  bool _isAllowedStoreUrl(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      return false;
+    }
+    final host = uri.host.toLowerCase();
+    return host == 'play.google.com' ||
+        host == 'apps.apple.com' ||
+        host.endsWith('.gms-world.com') ||
+        host.endsWith('.gms-world.co');
+  }
+
   Future<bool> launchUpdate(
     AppUpdatePolicy policy, {
     required bool mandatory,
   }) async {
     if (defaultTargetPlatform != TargetPlatform.android) {
       debugPrint('In-app update skipped: Android-only Google Play API.');
-      return policy.storeUrl.isNotEmpty
+      return policy.storeUrl.isNotEmpty && _isAllowedStoreUrl(policy.storeUrl)
           ? launchUrl(
               Uri.parse(policy.storeUrl),
               mode: LaunchMode.externalApplication,
@@ -177,11 +189,12 @@ class AppUpdateService {
       debugPrint('Google Play in-app update failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
-    if (policy.storeUrl.isNotEmpty)
+    if (policy.storeUrl.isNotEmpty && _isAllowedStoreUrl(policy.storeUrl)) {
       return launchUrl(
         Uri.parse(policy.storeUrl),
         mode: LaunchMode.externalApplication,
       );
+    }
     return false;
   }
 }
