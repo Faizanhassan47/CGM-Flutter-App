@@ -97,13 +97,28 @@ class ApiService {
     return _handle(response);
   }
 
+  /// Public auth posts retry briefly on 503 — Hostinger often returns
+  /// "Starting" while Nest finishes boot after idle/restart.
   Future<dynamic> _publicPost(String path, Object body) async {
-    final response = await _client.post(
-      _uri(path),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
+    const maxAttempts = 4;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      final response = await _client.post(
+        _uri(path),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      if (response.statusCode != 503 || attempt == maxAttempts) {
+        return _handle(response);
+      }
+      debugPrint(
+        '[API] 503 on $path (attempt $attempt/$maxAttempts) — retrying after Hostinger wake',
+      );
+      await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
+    }
+    throw const ApiException(
+      'Server is waking up. Try again in a moment.',
+      statusCode: 503,
     );
-    return _handle(response);
   }
 
   Future<dynamic> _publicGet(String path, [Map<String, dynamic>? query]) async {

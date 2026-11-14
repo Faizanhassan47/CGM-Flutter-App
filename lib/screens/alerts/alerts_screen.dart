@@ -413,17 +413,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    title,
-                                    style: const TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppTheme.darkPurple,
+                                  Expanded(
+                                    child: Text(
+                                      '$title',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.darkPurple,
+                                      ),
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Text(
                                     timeStr,
                                     style: const TextStyle(
@@ -435,7 +439,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                msg,
+                                '$msg',
+                                softWrap: true,
                                 style: const TextStyle(
                                   fontSize: 13,
                                   color: AppTheme.textMuted,
