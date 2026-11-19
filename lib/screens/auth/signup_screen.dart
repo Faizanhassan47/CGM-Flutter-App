@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/app_theme.dart';
+import '../../services/google_auth_service.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/brand_header.dart';
 import '../../widgets/custom_text_field.dart';
@@ -112,15 +112,9 @@ class _SignupScreenState extends State<SignupScreen> {
   void _onGoogleSignIn() async {
     setState(() => validationError = null);
     try {
-      final googleSignIn = GoogleSignIn(
-        serverClientId:
-            '203000957883-r5lchnrp5e9mq03dt95fb0qg64io5hrg.apps.googleusercontent.com',
-        scopes: ['email', 'profile'],
-      );
-      final account = await googleSignIn.signIn();
+      final account = await GoogleAuthService.signIn();
       if (account == null) return;
-      final auth = await account.authentication;
-      final idToken = auth.idToken;
+      final idToken = account.authentication.idToken;
       if (idToken == null) {
         setState(() => validationError = 'Could not obtain Google ID token.');
         return;

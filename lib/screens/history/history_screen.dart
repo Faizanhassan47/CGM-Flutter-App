@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/page_top_bar.dart';
 
@@ -20,11 +22,143 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String selectedFilter = 'Today'; // 'Today', '7D', '14D', '30D', '300D'
   late DateTime _weekStartMonday;
   bool _showAllReadings = false;
+  Timer? _telemetryDebounce;
+
+  List<GlucoseSample> _serverSamples = [];
+  Map<String, dynamic>? _serverSummary;
+  bool _loading = false;
+  bool _loadingMore = false;
+  int _page = 1;
+  bool _hasMore = false;
+  String? _loadError;
+
+  static const _pageSize = 250;
 
   @override
   void initState() {
     super.initState();
     _initWeekForDate(DateTime.now());
+    // Live SDK ticks only matter for "Today"; longer ranges stay on server pages.
+    widget.controller.addListener(_onTelemetry);
+    unawaited(_loadFromServer());
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTelemetry);
+    _telemetryDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onTelemetry() {
+    if (selectedFilter != 'Today') return;
+    _telemetryDebounce?.cancel();
+    _telemetryDebounce = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() {});
+    });
+  }
+
+  (DateTime, DateTime) _rangeForFilter() {
+    final now = DateTime.now();
+    if (selectedFilter == 'Today') {
+      final start = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+      );
+      final end = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        23,
+        59,
+        59,
+        999,
+      );
+      return (start, end);
+    }
+    int days = 7;
+    if (selectedFilter == '14D') days = 14;
+    if (selectedFilter == '30D') days = 30;
+    if (selectedFilter == '300D') days = 300;
+    return (now.subtract(Duration(days: days)), now);
+  }
+
+  Future<void> _loadFromServer({bool append = false}) async {
+    if (append) {
+      if (_loadingMore || !_hasMore) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+        _page = 1;
+        _hasMore = false;
+      });
+    }
+
+    final range = _rangeForFilter();
+    final page = append ? _page + 1 : 1;
+    try {
+      final historyPage = await widget.controller.fetchGlucoseHistoryPage(
+        startUtc: range.$1,
+        endUtc: range.$2,
+        page: page,
+        pageSize: _pageSize,
+      );
+      final rawItems = historyPage['items'];
+      final mapped = <GlucoseSample>[];
+      if (rawItems is List) {
+        for (final row in rawItems) {
+          if (row is! Map) continue;
+          final sample = AppController.sampleFromServerRow(
+            Map<String, dynamic>.from(row),
+          );
+          if (sample != null) mapped.add(sample);
+        }
+      }
+
+      Map<String, dynamic>? summary = _serverSummary;
+      if (!append) {
+        try {
+          summary = await widget.controller.fetchGlucoseSummary(
+            startUtc: range.$1,
+            endUtc: range.$2,
+          );
+        } catch (_) {
+          summary = null;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        if (append) {
+          // Server returns newest-first; keep that order when appending pages.
+          final existing = {
+            for (final s in _serverSamples) '${s.wearId}:${s.seq}:${s.measuredAt.millisecondsSinceEpoch}',
+          };
+          for (final s in mapped) {
+            final key =
+                '${s.wearId}:${s.seq}:${s.measuredAt.millisecondsSinceEpoch}';
+            if (existing.add(key)) _serverSamples.add(s);
+          }
+        } else {
+          _serverSamples = mapped;
+        }
+        _serverSummary = summary;
+        _page = page;
+        _hasMore = historyPage['hasMore'] == true;
+        _loading = false;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _loadError = 'Could not load history. Pull to refresh.';
+      });
+    }
   }
 
   void _initWeekForDate(DateTime date) {
@@ -39,14 +173,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() {
       _weekStartMonday = _weekStartMonday.subtract(const Duration(days: 7));
       selectedDate = _weekStartMonday.add(const Duration(days: 6));
+      selectedFilter = 'Today';
     });
+    unawaited(_loadFromServer());
   }
 
   void _onNextWeek() {
     setState(() {
       _weekStartMonday = _weekStartMonday.add(const Duration(days: 7));
       selectedDate = _weekStartMonday;
+      selectedFilter = 'Today';
     });
+    unawaited(_loadFromServer());
   }
 
   Future<void> _openCalendarPicker() async {
@@ -71,8 +209,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (picked != null) {
       setState(() {
         selectedDate = picked;
+        selectedFilter = 'Today';
         _initWeekForDate(picked);
       });
+      unawaited(_loadFromServer());
     }
   }
 
@@ -84,164 +224,184 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _initWeekForDate(selectedDate);
       }
     });
+    unawaited(_loadFromServer());
   }
 
   @override
   Widget build(BuildContext context) {
     final lowTarget = widget.controller.targetLow.toDouble();
     final highTarget = widget.controller.targetHigh.toDouble();
+    final range = _rangeForFilter();
+    final rangeStart = range.$1;
+    final rangeEnd = range.$2;
 
-    // 1. Filter samples according to filter or selectedDate
-    List<GlucoseSample> samplesForView = [];
-    DateTime rangeStart;
-    DateTime rangeEnd;
-
-    final now = DateTime.now();
+    // Server page (newest-first) + optional unsynced local points for Today.
+    final samplesNewestFirst = List<GlucoseSample>.from(_serverSamples);
     if (selectedFilter == 'Today') {
-      rangeStart = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-        0,
-        0,
-        0,
-      );
-      rangeEnd = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-        23,
-        59,
-        59,
-      );
-      samplesForView = widget.controller.history.where((s) {
-        return s.value != null &&
-            DateUtils.isSameDay(s.measuredAt, selectedDate);
-      }).toList();
-    } else {
-      int days = 7;
-      if (selectedFilter == '14D') days = 14;
-      if (selectedFilter == '30D') days = 30;
-      if (selectedFilter == '300D') days = 300;
-
-      rangeStart = now.subtract(Duration(days: days));
-      rangeEnd = now;
-      samplesForView = widget.controller.history.where((s) {
-        return s.value != null && s.measuredAt.isAfter(rangeStart);
-      }).toList();
+      final keys = {
+        for (final s in samplesNewestFirst)
+          '${s.wearId}:${s.seq}:${s.measuredAt.millisecondsSinceEpoch}',
+      };
+      for (var i = widget.controller.history.length - 1; i >= 0; i--) {
+        final s = widget.controller.history[i];
+        if (s.value == null) continue;
+        if (s.measuredAt.isBefore(rangeStart) || s.measuredAt.isAfter(rangeEnd)) {
+          continue;
+        }
+        final key =
+            '${s.wearId}:${s.seq}:${s.measuredAt.millisecondsSinceEpoch}';
+        if (keys.add(key)) samplesNewestFirst.insert(0, s);
+      }
     }
 
-    // Sort chronologically
-    samplesForView.sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
-
-    // Fallback demo readings if currently empty
+    // Chronological for the chart painter.
+    final samplesForView = samplesNewestFirst.reversed.toList();
     final hasRealData = samplesForView.isNotEmpty;
-    final readings = hasRealData ? samplesForView.reversed.toList() : <GlucoseSample>[];
+    final readingsLimit = _showAllReadings ? 40 : 9;
+    final readings = samplesNewestFirst.take(readingsLimit).toList();
+    final chartSamples = hasRealData
+        ? UiPerf.downsample(
+            samplesForView,
+            maxPoints: UiPerf.isLowEndLayout(context) ? 100 : 180,
+          )
+        : const <GlucoseSample>[];
 
-    // Calculate metrics
-    final values = readings.map((r) => (r.value! * 18.0182).round()).toList();
-    final avg = values.isNotEmpty
-        ? (values.reduce((a, b) => a + b) / values.length).round()
-        : 0;
-    final highest = values.isNotEmpty
-        ? values.reduce((a, b) => a > b ? a : b)
-        : 119;
-    final lowest = values.isNotEmpty
-        ? values.reduce((a, b) => a < b ? a : b)
-        : 110;
+    final summary = _serverSummary;
+    final avg = summary?['averageGlucose'] is num
+        ? (summary!['averageGlucose'] as num).round()
+        : (hasRealData
+            ? (samplesForView
+                        .map((r) => (r.value! * 18.0182).round())
+                        .reduce((a, b) => a + b) /
+                    samplesForView.length)
+                .round()
+            : 0);
+    final highest = summary?['highestGlucose'] is num
+        ? (summary!['highestGlucose'] as num).round()
+        : (hasRealData
+            ? samplesForView
+                .map((r) => (r.value! * 18.0182).round())
+                .reduce((a, b) => a > b ? a : b)
+            : 119);
+    final lowest = summary?['lowestGlucose'] is num
+        ? (summary!['lowestGlucose'] as num).round()
+        : (hasRealData
+            ? samplesForView
+                .map((r) => (r.value! * 18.0182).round())
+                .reduce((a, b) => a < b ? a : b)
+            : 110);
+    final tir = summary?['timeInRangePercentage'] is num
+        ? (summary!['timeInRangePercentage'] as num).round()
+        : (hasRealData
+            ? ((samplesForView
+                            .where((r) {
+                              final mg = (r.value! * 18.0182);
+                              return mg >= lowTarget && mg <= highTarget;
+                            })
+                            .length /
+                        samplesForView.length) *
+                    100)
+                .round()
+            : 100);
 
-    // Highest and lowest reading timestamps
-    String highestTimeStr = '3:41 pm';
-    String lowestTimeStr = '3:09 pm';
-    if (hasRealData && readings.isNotEmpty) {
-      final highSample = readings.firstWhere(
-        (r) => (r.value! * 18.0182).round() == highest,
-        orElse: () => readings.first,
-      );
-      final lowSample = readings.firstWhere(
-        (r) => (r.value! * 18.0182).round() == lowest,
-        orElse: () => readings.first,
-      );
-      highestTimeStr = DateFormat(
-        'h:mm a',
-      ).format(highSample.measuredAt).toLowerCase();
-      lowestTimeStr = DateFormat(
-        'h:mm a',
-      ).format(lowSample.measuredAt).toLowerCase();
+    DateTime? highAt;
+    DateTime? lowAt;
+    for (final r in samplesForView) {
+      if (r.value == null) continue;
+      final mg = (r.value! * 18.0182).round();
+      if (mg == highest) highAt = r.measuredAt;
+      if (mg == lowest) lowAt = r.measuredAt;
     }
-
-    final inTargetCount = values
-        .where((v) => v >= lowTarget && v <= highTarget)
-        .length;
-    final tir = values.isNotEmpty
-        ? ((inTargetCount / values.length) * 100).round()
-        : 100;
+    final highestTimeStr = highAt == null
+        ? '--'
+        : DateFormat('h:mm a').format(highAt).toLowerCase();
+    final lowestTimeStr = lowAt == null
+        ? '--'
+        : DateFormat('h:mm a').format(lowAt).toLowerCase();
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: RefreshIndicator(
           color: AppTheme.primaryPurple,
-          onRefresh: widget.controller.refreshHistory,
+          onRefresh: () async {
+            await widget.controller.refreshHistory();
+            await _loadFromServer();
+          },
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             children: [
-              // Header: "History" and Calendar Icon Button
               _buildTopHeader(),
               const SizedBox(height: 18),
-
-              // Calendar Strip with Prev/Next buttons
               _buildWeekSelectorStrip(),
               const SizedBox(height: 18),
-
-              // Filter Buttons Pill Row: Today, 7D, 14D, 30D, 300D
               _buildPeriodFilterPills(),
               const SizedBox(height: 20),
-
-              // Glucose Trend Chart Card
-              _buildGlucoseTrendCard(
-                samples: hasRealData ? samplesForView : const <GlucoseSample>[],
-                lowTarget: lowTarget,
-                highTarget: highTarget,
-                startTime: selectedFilter == 'Today'
-                    ? DateTime(
-                        selectedDate.year,
-                        selectedDate.month,
-                        selectedDate.day,
-                        0,
-                        0,
-                      )
-                    : rangeStart,
-                endTime: selectedFilter == 'Today'
-                    ? DateTime(
-                        selectedDate.year,
-                        selectedDate.month,
-                        selectedDate.day,
-                        23,
-                        59,
-                      )
-                    : rangeEnd,
-              ),
-              const SizedBox(height: 20),
-
-              // Glucose Readings List Card
-              _buildGlucoseReadingsCard(
-                readings,
-                lowTarget,
-                highTarget,
-                hasRealData: hasRealData,
-              ),
-              const SizedBox(height: 24),
-
-              // Daily Summary Metrics Card
-              if (hasRealData) _buildDailySummarySection(
-                avg: avg,
-                tir: tir,
-                highest: highest,
-                highestTime: highestTimeStr,
-                lowest: lowest,
-                lowestTime: lowestTimeStr,
-              ),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  ),
+                )
+              else ...[
+                if (_loadError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      _loadError!,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                _buildGlucoseTrendCard(
+                  samples: chartSamples,
+                  lowTarget: lowTarget,
+                  highTarget: highTarget,
+                  startTime: rangeStart,
+                  endTime: rangeEnd,
+                ),
+                const SizedBox(height: 20),
+                _buildGlucoseReadingsCard(
+                  readings,
+                  lowTarget,
+                  highTarget,
+                  hasRealData: hasRealData,
+                ),
+                if (_hasMore) ...[
+                  const SizedBox(height: 12),
+                  Center(
+                    child: TextButton(
+                      onPressed: _loadingMore
+                          ? null
+                          : () => unawaited(_loadFromServer(append: true)),
+                      child: _loadingMore
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Load more readings'),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                if (hasRealData || (summary?['hasData'] == true))
+                  _buildDailySummarySection(
+                    avg: avg,
+                    tir: tir,
+                    highest: highest,
+                    highestTime: highestTimeStr,
+                    lowest: lowest,
+                    lowestTime: lowestTimeStr,
+                  ),
+              ],
               const SizedBox(height: 24),
             ],
           ),
@@ -498,16 +658,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
                     ),
                   )
-                : CustomPaint(
-              painter: _HistoryTrendPainter(
-                samples: samples,
-                startTime: startTime,
-                endTime: endTime,
-                lowTarget: lowTarget,
-                highTarget: highTarget,
-              ),
-              child: Container(),
-            ),
+                : RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _HistoryTrendPainter(
+                        samples: samples,
+                        startTime: startTime,
+                        endTime: endTime,
+                        lowTarget: lowTarget,
+                        highTarget: highTarget,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
           ),
           const SizedBox(height: 10),
 
@@ -546,29 +708,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // Legend
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildLegendBullet(
-                  'In target (${lowTarget.round()}${highTarget.round()})',
-                  AppColors.primary,
-                ),
-                const SizedBox(width: 14),
-                _buildLegendBullet(
-                  'Low (< ${lowTarget.round()})',
-                  AppPalette.hexFF0096C7,
-                ),
-                const SizedBox(width: 14),
-                _buildLegendBullet(
-                  'High (> ${highTarget.round()})',
-                  AppPalette.hexFF7B2CBF,
-                ),
-                const SizedBox(width: 14),
-                _buildLegendBullet(
-                  'Urgent (< 55 / > 250)',
-                  AppPalette.hexFF3C096C,
-                ),
-              ],
-            ),
+       
           ),
         ],
       ),
@@ -1337,5 +1477,11 @@ class _HistoryTrendPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _HistoryTrendPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _HistoryTrendPainter oldDelegate) {
+    return !identical(oldDelegate.samples, samples) ||
+        oldDelegate.startTime != startTime ||
+        oldDelegate.endTime != endTime ||
+        oldDelegate.lowTarget != lowTarget ||
+        oldDelegate.highTarget != highTarget;
+  }
 }

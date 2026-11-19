@@ -112,6 +112,9 @@ Future<String> exportDiagnostics(
 
   final out = File(p.join(dir.path, 'cgm_diagnostics_${_stamp(now)}.zip'));
   final data = ZipEncoder().encode(archive);
+  if (data == null) {
+    throw StateError('Failed to encode CGM diagnostics archive.');
+  }
   await out.writeAsBytes(data, flush: true);
   return out.path;
 }

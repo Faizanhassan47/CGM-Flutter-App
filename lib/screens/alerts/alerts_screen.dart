@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
@@ -282,7 +283,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 10),
                     child: GestureDetector(
-                      onTap: () => setState(() => selectedFilter = f),
+                      onTap: () {
+                        setState(() => selectedFilter = f);
+                        final severity = switch (f) {
+                          'Critical' => 'Critical',
+                          'Warning' => 'Warning',
+                          _ => null,
+                        };
+                        unawaited(
+                          widget.controller.loadAlerts(severity: severity),
+                        );
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 18,

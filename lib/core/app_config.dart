@@ -5,6 +5,7 @@ class AppConfig {
 
   static String apiBaseUrl = '';
   static String wsUrl = '';
+  static String googleServerClientId = '';
 
   static const String defaultLanguage = String.fromEnvironment(
     'APP_DEFAULT_LANGUAGE',
@@ -28,11 +29,19 @@ class AppConfig {
     }
     final api = values['CGM_API_BASE_URL'] ?? '';
     final ws = values['CGM_WS_URL'] ?? '';
+    final googleClient =
+        values['GOOGLE_SERVER_CLIENT_ID'] ?? values['GOOGLE_CLIENT_ID'] ?? '';
     if (api.isEmpty) {
       throw StateError('CGM_API_BASE_URL is missing from .env');
+    }
+    if (googleClient.isEmpty) {
+      throw StateError(
+        'GOOGLE_SERVER_CLIENT_ID (or GOOGLE_CLIENT_ID) is missing from .env',
+      );
     }
     String withSlash(String value) => value.endsWith('/') ? value : '$value/';
     apiBaseUrl = withSlash(api);
     wsUrl = withSlash(ws.isEmpty ? api : ws);
+    googleServerClientId = googleClient;
   }
 }

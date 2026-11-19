@@ -42,11 +42,9 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _pillWidths = [for (final tab in _tabs) _widthForLabel(tab.label)];
-    _pillController = AnimationController.unbounded(vsync: this, value: 0)
-      ..addListener(() {
-        if (_scrubbing) return;
-        setState(() => _pillPage = _pillController.value);
-      });
+    // Do not setState on every tick — that rebuilt IndexedStack (all tabs).
+    // Pill motion is driven by AnimatedBuilder below.
+    _pillController = AnimationController.unbounded(vsync: this, value: 0);
   }
 
   @override
@@ -123,15 +121,27 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: IndexedStack(
-        index: _selected,
-        children: [
-          HomeScreen(controller: widget.controller, onSwitchTab: _onSwitchTab),
-          HistoryScreen(controller: widget.controller),
-          DailyActivitiesScreen(api: widget.controller.api),
-          ProfileScreen(controller: widget.controller),
-        ],
-      ),
+      // Build only the active tab. IndexedStack kept all 4 trees (and their
+      // ListenableBuilders / chart painters) alive and janking on low-end.
+      body: switch (_selected) {
+        0 => HomeScreen(
+            key: const ValueKey('tab-home'),
+            controller: widget.controller,
+            onSwitchTab: _onSwitchTab,
+          ),
+        1 => HistoryScreen(
+            key: const ValueKey('tab-history'),
+            controller: widget.controller,
+          ),
+        2 => DailyActivitiesScreen(
+            key: const ValueKey('tab-activities'),
+            api: widget.controller.api,
+          ),
+        _ => ProfileScreen(
+            key: const ValueKey('tab-profile'),
+            controller: widget.controller,
+          ),
+      },
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
         child: SafeArea(
@@ -148,75 +158,96 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
                 BoxShadow(color: Color(0x14000000), blurRadius: 22, offset: Offset(0, 8)),
               ],
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final slot = constraints.maxWidth / _tabs.length;
-                final page = _pillPage.clamp(0.0, (_tabs.length - 1).toDouble());
-                final lower = page.floor().clamp(0, _tabs.length - 1);
-                final upper = page.ceil().clamp(0, _tabs.length - 1);
-                final t = lower == upper ? 0.0 : page - lower;
-                final width = _pillWidths[lower] * (1 - t) + _pillWidths[upper] * t;
-                final center = (lower + t) * slot + slot / 2;
-                final left = (center - width / 2).clamp(0.0, constraints.maxWidth - width);
-                final labelIndex = page.round().clamp(0, _tabs.length - 1);
-                final labelOpacity = (1 - (page - labelIndex).abs() * 2).clamp(0.0, 1.0);
+            child: AnimatedBuilder(
+              animation: _pillController,
+              builder: (context, _) {
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final slot = constraints.maxWidth / _tabs.length;
+                    final page = (_scrubbing ? _pillPage : _pillController.value)
+                        .clamp(0.0, (_tabs.length - 1).toDouble());
+                    final lower = page.floor().clamp(0, _tabs.length - 1);
+                    final upper = page.ceil().clamp(0, _tabs.length - 1);
+                    final t = lower == upper ? 0.0 : page - lower;
+                    final width =
+                        _pillWidths[lower] * (1 - t) + _pillWidths[upper] * t;
+                    final center = (lower + t) * slot + slot / 2;
+                    final left = (center - width / 2)
+                        .clamp(0.0, constraints.maxWidth - width);
+                    final labelIndex = page.round().clamp(0, _tabs.length - 1);
+                    final labelOpacity =
+                        (1 - (page - labelIndex).abs() * 2).clamp(0.0, 1.0);
 
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapDown: (details) {
-                    final index = (details.localPosition.dx / constraints.maxWidth * _tabs.length)
-                        .floor()
-                        .clamp(0, _tabs.length - 1);
-                    _selectTab(index);
-                  },
-                  onHorizontalDragStart: (details) => _scrubTo(details.globalPosition),
-                  onHorizontalDragUpdate: (details) => _scrubTo(details.globalPosition),
-                  onHorizontalDragEnd: (_) => _endScrub(),
-                  onHorizontalDragCancel: _endScrub,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: left,
-                        top: 0,
-                        bottom: 0,
-                        width: width,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(26),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(_tabs[labelIndex].activeIcon, size: 22, color: Colors.white),
-                              SizedBox(width: 8 * labelOpacity),
-                              Opacity(
-                                opacity: labelOpacity,
-                                child: Text(_tabs[labelIndex].label, style: _labelStyle),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Row(
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (details) {
+                        final index =
+                            (details.localPosition.dx /
+                                    constraints.maxWidth *
+                                    _tabs.length)
+                                .floor()
+                                .clamp(0, _tabs.length - 1);
+                        _selectTab(index);
+                      },
+                      onHorizontalDragStart: (details) =>
+                          _scrubTo(details.globalPosition),
+                      onHorizontalDragUpdate: (details) =>
+                          _scrubTo(details.globalPosition),
+                      onHorizontalDragEnd: (_) => _endScrub(),
+                      onHorizontalDragCancel: _endScrub,
+                      child: Stack(
                         children: [
-                          for (var i = 0; i < _tabs.length; i++)
-                            Expanded(
-                              child: Center(
-                                child: Opacity(
-                                  opacity: labelIndex == i ? 0 : 1,
-                                  child: Icon(
-                                    _tabs[i].icon,
+                          Positioned(
+                            left: left,
+                            top: 0,
+                            bottom: 0,
+                            width: width,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(26),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    _tabs[labelIndex].activeIcon,
                                     size: 22,
-                                    color: AppColors.textSecondary,
+                                    color: Colors.white,
                                   ),
-                                ),
+                                  SizedBox(width: 8 * labelOpacity),
+                                  Opacity(
+                                    opacity: labelOpacity,
+                                    child: Text(
+                                      _tabs[labelIndex].label,
+                                      style: _labelStyle,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
+                          ),
+                          Row(
+                            children: [
+                              for (var i = 0; i < _tabs.length; i++)
+                                Expanded(
+                                  child: Center(
+                                    child: Opacity(
+                                      opacity: labelIndex == i ? 0 : 1,
+                                      child: Icon(
+                                        _tabs[i].icon,
+                                        size: 22,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 );
               },
             ),

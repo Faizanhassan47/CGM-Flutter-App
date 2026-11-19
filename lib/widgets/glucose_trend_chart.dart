@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/material.dart';
 import '../core/app_theme.dart';
+import '../core/ui_perf.dart';
 
 class GlucoseTrendCard extends StatefulWidget {
   const GlucoseTrendCard({
@@ -44,6 +45,10 @@ class _GlucoseTrendCardState extends State<GlucoseTrendCard> {
     final filtered = widget.samples
         .where((s) => s.value != null && s.measuredAt.isAfter(cutoff))
         .toList();
+    final chartSamples = UiPerf.downsample(
+      filtered,
+      maxPoints: UiPerf.isLowEndLayout(context) ? 140 : 240,
+    );
 
     // Calculate in target %
     int inTargetCount = 0;
@@ -148,13 +153,15 @@ class _GlucoseTrendCardState extends State<GlucoseTrendCard> {
           SizedBox(
             height: 190,
             width: double.infinity,
-            child: CustomPaint(
-              painter: _CorridorChartPainter(
-                samples: filtered,
-                startTime: cutoff,
-                endTime: now,
-                lowTarget: widget.lowTarget,
-                highTarget: widget.highTarget,
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _CorridorChartPainter(
+                  samples: chartSamples,
+                  startTime: cutoff,
+                  endTime: now,
+                  lowTarget: widget.lowTarget,
+                  highTarget: widget.highTarget,
+                ),
               ),
             ),
           ),
@@ -402,5 +409,11 @@ class _CorridorChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CorridorChartPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _CorridorChartPainter oldDelegate) {
+    return !identical(oldDelegate.samples, samples) ||
+        oldDelegate.startTime != startTime ||
+        oldDelegate.endTime != endTime ||
+        oldDelegate.lowTarget != lowTarget ||
+        oldDelegate.highTarget != highTarget;
+  }
 }

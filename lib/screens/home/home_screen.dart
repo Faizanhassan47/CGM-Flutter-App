@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../alerts/alerts_screen.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
 import '../../widgets/page_top_bar.dart';
@@ -33,160 +34,162 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        final isConnected =
-            controller.connection == CgmConnectionState.connected;
-        // Never present a cached glucose value as current telemetry while the
-        // sensor link is disconnected or reconnecting.
-        final sample = isConnected ? controller.latest : null;
-        final sampleVal = sample?.value;
-        final double? rawMg = sampleVal != null
-            ? (sampleVal > 30 ? sampleVal : sampleVal * 18.0182)
-            : null;
-        final int? mg = rawMg?.round();
-
-        final isMmol = controller.preferredGlucoseUnit.toLowerCase().contains(
-          'mmol',
-        );
-        final String unitStr = isMmol ? 'mmol/L' : 'mg/dL';
-        final String displayGlucose = rawMg != null
-            ? (isMmol
-                  ? (rawMg / 18.0182).toStringAsFixed(1)
-                  : '${rawMg.round()}')
-            : '--';
-
-        final displayName = controller.fullName.trim().isNotEmpty
-            ? controller.fullName.trim().split(' ').first
-            : 'Visole';
-
-        final lowT = controller.targetLow;
-        final highT = controller.targetHigh;
-
-        final isUrgentLow = mg != null && mg < 55;
-        final inTarget = mg != null && mg >= lowT && mg <= highT;
-
-        return ColoredBox(
-          color: AppColors.background,
-          child: SafeArea(
-          bottom: false,
-          child: RefreshIndicator(
-            color: AppTheme.primaryPurple,
-            onRefresh: () async {
-              await controller.refreshHistory();
-              await controller.loadReports();
-            },
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              children: [
-                PageTopBar(
-                  title: displayName,
-                  subtitle: controller.wear == null
-                      ? _greeting
-                      : () {
-                          final days = controller.wear!.expiresAt.difference(DateTime.now()).inDays;
-                          final life = days > 0 ? '$days days left on this sensor' : 'Replace this sensor';
-                          return '$_greeting · $life';
-                        }(),
-                  trailing: PageTopAction(
-                    tooltip: 'Alerts',
-                    icon: Icons.notifications_none_rounded,
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(builder: (_) => AlertsScreen(controller: controller)),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // 4. Grace Period / Sensor Expiration Warning Banner
-                Builder(
-                  builder: (context) {
-                    final wear = controller.wear;
-                    if (wear != null) {
-                      final now = DateTime.now();
-                      if (now.isAfter(wear.expiresAt)) {
-                        final hoursOver = now
-                            .difference(wear.expiresAt)
-                            .inHours;
-                        final graceHoursLeft = (12 - hoursOver).clamp(0, 12);
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 14),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppPalette.hexFFFEF3C7,
-                            borderRadius: AppRadii.r16,
-                            border: Border.all(color: AppPalette.hexFFF59E0B),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.warning_amber_rounded,
-                                color: AppPalette.hexFFD97706,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Sensor Grace Period Active',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 13.5,
-                                        color: AppPalette.hexFF92400E,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '14-day lifespan reached. $graceHoursLeft hours grace remaining before replacement required.',
-                                      style: const TextStyle(
-                                        fontSize: 11.5,
-                                        color: AppPalette.hexFFB45309,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+    // Reminder cards stay outside the glucose listener so API-backed widgets
+    // are not rebuilt on every telemetry tick.
+    return ColoredBox(
+      color: AppColors.background,
+      child: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: AppTheme.primaryPurple,
+          onRefresh: () async {
+            await controller.refreshHistory();
+            await controller.loadReports();
+          },
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            children: [
+              ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) {
+                  final displayName = controller.fullName.trim().isNotEmpty
+                      ? controller.fullName.trim().split(' ').first
+                      : 'Visole';
+                  return PageTopBar(
+                    title: displayName,
+                    subtitle: controller.wear == null
+                        ? _greeting
+                        : () {
+                            final days = controller.wear!.expiresAt
+                                .difference(DateTime.now())
+                                .inDays;
+                            final life = days > 0
+                                ? '$days days left on this sensor'
+                                : 'Replace this sensor';
+                            return '$_greeting · $life';
+                          }(),
+                    trailing: PageTopAction(
+                      tooltip: 'Alerts',
+                      icon: Icons.notifications_none_rounded,
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                AlertsScreen(controller: controller),
                           ),
                         );
-                      }
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
+                      },
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              ListenableBuilder(
+                listenable: controller,
+                builder: (context, _) {
+                  final isConnected =
+                      controller.connection == CgmConnectionState.connected;
+                  final sample = isConnected ? controller.latest : null;
+                  final sampleVal = sample?.value;
+                  final double? rawMg = sampleVal != null
+                      ? (sampleVal > 30 ? sampleVal : sampleVal * 18.0182)
+                      : null;
+                  final int? mg = rawMg?.round();
+                  final isMmol = controller.preferredGlucoseUnit
+                      .toLowerCase()
+                      .contains('mmol');
+                  final unitStr = isMmol ? 'mmol/L' : 'mg/dL';
+                  final displayGlucose = rawMg != null
+                      ? (isMmol
+                            ? (rawMg / 18.0182).toStringAsFixed(1)
+                            : '${rawMg.round()}')
+                      : '--';
+                  final lowT = controller.targetLow;
+                  final highT = controller.targetHigh;
+                  final isUrgentLow = mg != null && mg < 55;
+                  final inTarget = mg != null && mg >= lowT && mg <= highT;
 
-                _readingCard(
-                  context,
-                  mg: mg,
-                  displayGlucose: displayGlucose,
-                  unitStr: unitStr,
-                  isConnected: isConnected,
-                  inTarget: inTarget,
-                  isUrgentLow: isUrgentLow,
-                  isHigh: mg != null && mg > highT,
-                  scannedAt: sample?.measuredAt,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _graceBanner(),
+                      _readingCard(
+                        context,
+                        mg: mg,
+                        displayGlucose: displayGlucose,
+                        unitStr: unitStr,
+                        isConnected: isConnected,
+                        inTarget: inTarget,
+                        isUrgentLow: isUrgentLow,
+                        isHigh: mg != null && mg > highT,
+                        scannedAt: sample?.measuredAt,
+                      ),
+                      const SizedBox(height: 14),
+                      _todayChart(context, lowT, highT, isConnected, isMmol),
+                      const SizedBox(height: 14),
+                      _statGrid(isConnected, lowT, highT),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              _ReminderHomeCards(api: controller.api),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _graceBanner() {
+    final wear = controller.wear;
+    if (wear == null) return const SizedBox.shrink();
+    final now = DateTime.now();
+    if (!now.isAfter(wear.expiresAt)) return const SizedBox.shrink();
+    final hoursOver = now.difference(wear.expiresAt).inHours;
+    final graceHoursLeft = (12 - hoursOver).clamp(0, 12);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppPalette.hexFFFEF3C7,
+        borderRadius: AppRadii.r16,
+        border: Border.all(color: AppPalette.hexFFF59E0B),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: AppPalette.hexFFD97706,
+            size: 24,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Sensor Grace Period Active',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                    color: AppPalette.hexFF92400E,
+                  ),
                 ),
-                const SizedBox(height: 14),
-                _todayChart(context, lowT, highT, isConnected, isMmol),
-                const SizedBox(height: 14),
-                _statGrid(isConnected, lowT, highT),
-                const SizedBox(height: 14),
-                _ReminderHomeCards(api: controller.api),
-                const SizedBox(height: 24),
+                const SizedBox(height: 2),
+                Text(
+                  '14-day lifespan reached. $graceHoursLeft hours grace remaining before replacement required.',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppPalette.hexFFB45309,
+                  ),
+                ),
               ],
             ),
           ),
-        ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -201,7 +204,15 @@ class HomeScreen extends StatelessWidget {
     required bool isHigh,
     required DateTime? scannedAt,
   }) {
-    final lastSample = controller.history.where((s) => s.value != null).lastOrNull;
+    GlucoseSample? lastSample = controller.latest;
+    if (lastSample?.value == null) {
+      for (var i = controller.history.length - 1; i >= 0; i--) {
+        if (controller.history[i].value != null) {
+          lastSample = controller.history[i];
+          break;
+        }
+      }
+    }
     final wear = controller.wear;
     final warming = isConnected && wear != null && DateTime.now().isBefore(wear.warmupEndAt);
     final warmupLeft = warming ? wear.warmupEndAt.difference(DateTime.now()).inMinutes.clamp(1, 999) : 0;
@@ -270,27 +281,33 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _todayChart(BuildContext context, double lowT, double highT, bool isConnected, bool mmol) {
-    return _HomeChart(
-      samples: controller.history,
-      low: lowT,
-      high: highT,
-      mmol: mmol,
-      connected: isConnected,
-      api: controller.api,
-      onConnect: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+    return RepaintBoundary(
+      child: _HomeChart(
+        samples: controller.history,
+        low: lowT,
+        high: highT,
+        mmol: mmol,
+        connected: isConnected,
+        api: controller.api,
+        onConnect: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+        ),
       ),
     );
   }
 
   Widget _statGrid(bool isConnected, double lowT, double highT) {
     final cutoff = DateTime.now().subtract(const Duration(hours: 12));
-    final values = isConnected
-        ? controller.history
-            .where((s) => s.value != null && s.measuredAt.isAfter(cutoff))
-            .map((s) => s.value! > 30 ? s.value! : s.value! * 18.0182)
-            .toList()
-        : <double>[];
+    final values = <double>[];
+    if (isConnected) {
+      // History is sorted ascending — walk from the end and stop early.
+      for (var i = controller.history.length - 1; i >= 0; i--) {
+        final s = controller.history[i];
+        if (!s.measuredAt.isAfter(cutoff)) break;
+        if (s.value == null) continue;
+        values.add(s.value! > 30 ? s.value! : s.value! * 18.0182);
+      }
+    }
     final avg = values.isEmpty ? null : (values.reduce((a, b) => a + b) / values.length).round();
     final tir = values.isEmpty
         ? null
@@ -1772,6 +1789,8 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
   int? picked;
   List<DateTime> marks = [];
   static const _labels = ['Live', '1h', '6h', '12h', '24h'];
+  String? _pointsCacheKey;
+  List<GlucoseSample> _cachedPoints = const [];
 
   Duration get _span => switch (range) {
     1 => const Duration(hours: 1),
@@ -1785,8 +1804,32 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
   @override
   void initState() {
     super.initState();
-    _draw = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..forward();
+    final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    _draw = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: reduceMotion ? 0 : 450),
+    )..forward();
     _loadMarks();
+  }
+
+  List<GlucoseSample> _pointsForRange(BuildContext context) {
+    final last = widget.samples.isEmpty ? null : widget.samples.last;
+    final key =
+        '$range|${widget.samples.length}|${last?.seq}|${last?.wearId}|${widget.connected}';
+    if (_pointsCacheKey == key) return _cachedPoints;
+    final cutoff = DateTime.now().subtract(_span);
+    final raw = <GlucoseSample>[];
+    for (var i = widget.samples.length - 1; i >= 0; i--) {
+      final s = widget.samples[i];
+      if (!s.measuredAt.isAfter(cutoff)) break;
+      if (s.value != null) raw.add(s);
+    }
+    _cachedPoints = UiPerf.downsample(
+      raw.reversed.toList(),
+      maxPoints: UiPerf.isLowEndLayout(context) ? 80 : 160,
+    );
+    _pointsCacheKey = key;
+    return _cachedPoints;
   }
 
   Future<void> _loadMarks() async {
@@ -1839,8 +1882,7 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    final cutoff = DateTime.now().subtract(_span);
-    final points = widget.samples.where((s) => s.value != null && s.measuredAt.isAfter(cutoff)).toList();
+    final points = _pointsForRange(context);
     final values = points.map((s) => s.value! > 30 ? s.value! : s.value! * 18.0182).toList();
     final times = points.map((s) => s.measuredAt).toList();
     String shown(double mg) => widget.mmol ? (mg / 18.0182).toStringAsFixed(1) : mg.round().toString();

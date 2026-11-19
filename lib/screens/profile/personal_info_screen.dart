@@ -369,7 +369,16 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         ),
       );
 
-      await widget.controller.uploadProfilePicture(bytes, picked.name);
+      // UCrop output is JPEG; always send an image/* Content-Type (plain
+      // MultipartFile defaults to application/octet-stream → API 400).
+      final uploadName = croppedFile.path.toLowerCase().endsWith('.png')
+          ? 'avatar.png'
+          : 'avatar.jpg';
+      await widget.controller.uploadProfilePicture(
+        bytes,
+        uploadName,
+        contentType: uploadName.endsWith('.png') ? 'image/png' : 'image/jpeg',
+      );
 
       if (!mounted) return;
       setState(() {});

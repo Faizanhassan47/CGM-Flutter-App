@@ -14,6 +14,8 @@ class BrandHeader extends StatelessWidget {
           'assets/images/circle_logo.png',
           width: 300,
           fit: BoxFit.contain,
+          cacheWidth: (300 * MediaQuery.devicePixelRatioOf(context)).round(),
+          filterQuality: FilterQuality.medium,
           semanticLabel: 'Circle Continuous Glucose Monitoring',
         ),
         const SizedBox(height: AppSpacing.md),

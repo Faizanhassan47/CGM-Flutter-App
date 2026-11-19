@@ -3,6 +3,7 @@ import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../core/app_config.dart';
 import 'logging_http_client.dart';
@@ -371,14 +372,34 @@ class ApiService {
   /// Uploads user avatar photo directly to iDrive e2 S3 via backend endpoint.
   Future<Map<String, dynamic>> uploadProfilePicture(
     List<int> bytes,
-    String filename,
-  ) async {
+    String filename, {
+    String contentType = 'image/jpeg',
+  }) async {
     final request = http.MultipartRequest('POST', _uri('api/Profile/picture'));
     if (_accessToken != null) {
       request.headers['Authorization'] = 'Bearer $_accessToken';
     }
+    final lower = filename.toLowerCase();
+    final mime = contentType.isNotEmpty
+        ? contentType
+        : lower.endsWith('.png')
+            ? 'image/png'
+            : lower.endsWith('.webp')
+                ? 'image/webp'
+                : 'image/jpeg';
+    final safeName = lower.endsWith('.png') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.webp')
+        ? filename
+        : 'avatar.jpg';
     request.files.add(
-      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: safeName,
+        contentType: MediaType.parse(mime),
+      ),
     );
     final streamed = await _client.send(request);
     final response = await http.Response.fromStream(streamed);
@@ -591,29 +612,67 @@ class ApiService {
     });
   }
 
-  /// Fetch historical glucose readings with optional filters.
-  Future<List<dynamic>> getGlucoseHistory({
+  /// Fetch historical glucose readings with server-side pagination + filters.
+  Future<Map<String, dynamic>> getGlucoseHistory({
+    int page = 1,
+    int pageSize = 300,
     int? limit,
     int? hours,
+    int? days,
+    int? sensorId,
+    String? startUtc,
+    String? endUtc,
     String? startDate,
     String? endDate,
   }) async {
     final query = <String, dynamic>{
-      if (limit != null) 'limit': limit,
+      'page': page,
+      'pageSize': limit ?? pageSize,
       if (hours != null) 'hours': hours,
+      if (days != null) 'days': days,
+      if (sensorId != null) 'sensorId': sensorId,
+      if (startUtc != null) 'startUtc': startUtc,
+      if (endUtc != null) 'endUtc': endUtc,
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+    };
+    final res = await get('api/Glucose/history', query: query);
+    if (res is List) {
+      return {
+        'items': res,
+        'page': page,
+        'pageSize': limit ?? pageSize,
+        'totalCount': res.length,
+        'totalPages': 1,
+        'hasMore': false,
+      };
+    }
+    return _map(res);
+  }
+
+  /// Fetch glucose statistical summary (TIR, Average, eA1c).
+  Future<Map<String, dynamic>> getGlucoseSummary({
+    int? days,
+    int? hours,
+    int? sensorId,
+    String? startUtc,
+    String? endUtc,
+    String? startDate,
+    String? endDate,
+  }) async {
+    final query = <String, dynamic>{
+      if (days != null) 'days': days,
+      if (hours != null) 'hours': hours,
+      if (sensorId != null) 'sensorId': sensorId,
+      if (startUtc != null) 'startUtc': startUtc,
+      if (endUtc != null) 'endUtc': endUtc,
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
     };
     final res = await get(
-      'api/Glucose/history',
-      query: query.isEmpty ? null : query,
+      'api/Glucose/summary',
+      query: query.isEmpty ? {'days': 1} : query,
     );
-    return res is List ? res : [];
-  }
-
-  /// Fetch glucose statistical summary (TIR, Average, eA1c).
-  Future<Map<String, dynamic>> getGlucoseSummary({int days = 7}) async {
-    final res = await get('api/Glucose/summary', query: {'days': days});
     return _map(res);
   }
 
@@ -631,14 +690,48 @@ class ApiService {
   // 6. ALERTS & THRESHOLD RULES APIS
   // ===========================================================================
 
-  /// Fetch alerts with optional filters.
-  Future<List<dynamic>> getAlerts({String? severity, bool? unreadOnly}) async {
+  /// Fetch alerts with optional filters + pagination.
+  Future<Map<String, dynamic>> getAlertsPage({
+    String? severity,
+    bool? unreadOnly,
+    int page = 1,
+    int pageSize = 30,
+  }) async {
     final query = <String, dynamic>{
+      'page': page,
+      'pageSize': pageSize,
       if (severity != null) 'severity': severity,
       if (unreadOnly != null) 'unreadOnly': unreadOnly.toString(),
     };
-    final res = await get('api/Alerts', query: query.isEmpty ? null : query);
-    return res is List ? res : [];
+    final res = await get('api/Alerts', query: query);
+    if (res is List) {
+      return {
+        'items': res,
+        'page': page,
+        'pageSize': pageSize,
+        'totalCount': res.length,
+        'totalPages': 1,
+        'hasMore': false,
+      };
+    }
+    return _map(res);
+  }
+
+  /// Compatibility helper — returns items only.
+  Future<List<dynamic>> getAlerts({
+    String? severity,
+    bool? unreadOnly,
+    int page = 1,
+    int pageSize = 30,
+  }) async {
+    final pageData = await getAlertsPage(
+      severity: severity,
+      unreadOnly: unreadOnly,
+      page: page,
+      pageSize: pageSize,
+    );
+    final items = pageData['items'];
+    return items is List ? items : const [];
   }
 
   /// Mark specific alert as read.

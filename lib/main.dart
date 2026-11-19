@@ -18,6 +18,9 @@ import 'widgets/brand_header.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Keep decoded image memory bounded on low-RAM phones.
+  PaintingBinding.instance.imageCache.maximumSize = 40;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 40 << 20;
   await AppConfig.load();
 
   try {
@@ -154,16 +157,19 @@ class _CircleAppState extends State<CircleApp> {
       title: 'Circle',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.themeData.copyWith(
+        // Fade-only transitions are cheaper than slide+fade on weak GPUs.
         pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
-            TargetPlatform.android: _SoftPageTransition(),
-            TargetPlatform.iOS: _SoftPageTransition(),
+            TargetPlatform.android: _FadePageTransition(),
+            TargetPlatform.iOS: _FadePageTransition(),
           },
         ),
       ),
-      home: AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) {
+      // Listen to sessionRevision — NOT the full controller — so glucose /
+      // history ticks never rebuild MainShell from the app root.
+      home: ValueListenableBuilder<int>(
+        valueListenable: controller.sessionRevision,
+        builder: (context, _, __) {
           if (updatePolicy?.state == UpdateState.mandatoryUpdate) {
             return AppUpdateGate(policy: updatePolicy!);
           }
@@ -172,7 +178,9 @@ class _CircleAppState extends State<CircleApp> {
           }
           if (!controller.authenticated) {
             if (_welcomeSeen == null) return const SplashView();
-            if (_welcomeSeen == false) return WelcomeScreen(onDone: _finishWelcome);
+            if (_welcomeSeen == false) {
+              return WelcomeScreen(onDone: _finishWelcome);
+            }
             return LoginScreen(controller: controller);
           }
           if (!controller.profileCompleted && controller.wear == null) {
@@ -192,8 +200,8 @@ class _CircleAppState extends State<CircleApp> {
   }
 }
 
-class _SoftPageTransition extends PageTransitionsBuilder {
-  const _SoftPageTransition();
+class _FadePageTransition extends PageTransitionsBuilder {
+  const _FadePageTransition();
 
   @override
   Widget buildTransitions<T>(
@@ -203,13 +211,9 @@ class _SoftPageTransition extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
     return FadeTransition(
-      opacity: curved,
-      child: SlideTransition(
-        position: Tween<Offset>(begin: const Offset(0.04, 0), end: Offset.zero).animate(curved),
-        child: child,
-      ),
+      opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+      child: child,
     );
   }
 }

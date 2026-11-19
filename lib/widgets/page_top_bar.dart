@@ -44,6 +44,9 @@ class PageTopBar extends StatelessWidget {
           child: Image.asset(
             'assets/images/circle_mark.png',
             semanticLabel: 'Circle Logo',
+            cacheWidth: (44 * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheHeight: (44 * MediaQuery.devicePixelRatioOf(context)).round(),
+            filterQuality: FilterQuality.medium,
           ),
         ),
         const SizedBox(width: 14),

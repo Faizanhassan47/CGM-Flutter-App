@@ -16,6 +16,12 @@ class AppController extends ChangeNotifier {
   AppController(this.api);
   final ApiService api;
 
+  /// Bumped only for auth / splash / profile-gate changes.
+  /// CircleApp listens here so glucose ticks do not rebuild MainShell.
+  final ValueNotifier<int> sessionRevision = ValueNotifier(0);
+
+  void _bumpSession() => sessionRevision.value++;
+
   bool loading = true;
   bool authenticated = false;
   bool sdkReady = false;
@@ -120,6 +126,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> initialize() async {
     loading = true;
+    _bumpSession();
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -168,6 +175,7 @@ class AppController extends ChangeNotifier {
       error = 'SDK initialization failed: $e';
     } finally {
       loading = false;
+      _bumpSession();
       notifyListeners();
     }
   }
@@ -231,7 +239,9 @@ class AppController extends ChangeNotifier {
             data['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
         language = data['language']?.toString() ?? language;
         referralCode = data['referralCode']?.toString() ?? referralCode;
+        final wasComplete = profileCompleted;
         profileCompleted = data['profileCompleted'] == true;
+        if (wasComplete != profileCompleted) _bumpSession();
         bedTime = data['bedTime']?.toString() ?? bedTime;
         wakeTime = data['wakeTime']?.toString() ?? wakeTime;
         if (data['targetLow'] != null) {
@@ -431,15 +441,28 @@ class AppController extends ChangeNotifier {
           res['preferredGlucoseUnit'] ?? unit ?? preferredGlucoseUnit;
       language = res['language'] ?? lang ?? language;
       profileCompleted = true;
+      _bumpSession();
     });
   }
 
   /// Uploads user profile picture and updates profilePictureUrl.
-  Future<void> uploadProfilePicture(List<int> bytes, String filename) async {
+  Future<void> uploadProfilePicture(
+    List<int> bytes,
+    String filename, {
+    String contentType = 'image/jpeg',
+  }) async {
     await _run(() async {
-      final res = await api.uploadProfilePicture(bytes, filename);
+      final res = await api.uploadProfilePicture(
+        bytes,
+        filename,
+        contentType: contentType,
+      );
       if (res['profilePictureUrl'] != null) {
         profilePictureUrl = res['profilePictureUrl'].toString();
+      }
+      final nested = res['profile'];
+      if (nested is Map && nested['profilePictureUrl'] != null) {
+        profilePictureUrl = nested['profilePictureUrl'].toString();
       }
       notifyListeners();
     });
@@ -508,6 +531,7 @@ class AppController extends ChangeNotifier {
     await _run(() async {
       await api.login(username.trim(), password);
       authenticated = true;
+      _bumpSession();
       notifyListeners();
       // Load user profile and auxiliary data in parallel in the background
       unawaited(
@@ -563,6 +587,7 @@ class AppController extends ChangeNotifier {
           referralCode = code;
         }
       }
+      _bumpSession();
       notifyListeners();
       // Load user profile immediately to determine profile completion and user data
       await loadUserProfile();
@@ -614,6 +639,7 @@ class AppController extends ChangeNotifier {
           referralCode = code;
         }
       }
+      _bumpSession();
       notifyListeners();
       unawaited(loadUserProfile());
       unawaited(loadFamily());
@@ -686,6 +712,7 @@ class AppController extends ChangeNotifier {
       wear = null;
       history = [];
       latest = null;
+      _bumpSession();
     });
   }
 
@@ -708,6 +735,7 @@ class AppController extends ChangeNotifier {
       try {
         await CgmSdk.unbind();
       } catch (_) {}
+      _bumpSession();
     });
   }
 
@@ -808,9 +836,13 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> loadAlerts() async {
+  Future<void> loadAlerts({String? severity, int page = 1, int pageSize = 40}) async {
     try {
-      final fetchedAlerts = await api.getAlerts();
+      final fetchedAlerts = await api.getAlerts(
+        severity: severity,
+        page: page,
+        pageSize: pageSize,
+      );
 
       if (alerts.isNotEmpty && fetchedAlerts.isNotEmpty) {
         final existingIds = alerts
@@ -1005,6 +1037,7 @@ class AppController extends ChangeNotifier {
       }
       await loadActiveDeviceAndSensor();
       await refreshHistory();
+      _bumpSession();
     });
   }
 
@@ -1020,15 +1053,17 @@ class AppController extends ChangeNotifier {
       activeSensor = null;
       activeDevice = null;
       history = [];
+      _bumpSession();
     });
   }
 
   Future<void> refreshHistory() async {
     if (!sdkReady) return;
     history = await CgmSdk.query(
-      from: DateTime.now().subtract(const Duration(days: 14)),
-      limit: 25000,
+      from: DateTime.now().subtract(const Duration(hours: 36)),
+      limit: _maxUiHistory,
     );
+    _trimHistory();
     latest = history.isEmpty ? await CgmSdk.latest() : history.last;
     notifyListeners();
     // Flush any pending offline samples to server once connectivity is present
@@ -1040,6 +1075,127 @@ class AppController extends ChangeNotifier {
   void clearError() {
     error = null;
     notifyListeners();
+  }
+
+  DateTime? _lastUiNotifyAt;
+  DateTime? _lastProgressNotifyAt;
+  Timer? _uiNotifyTimer;
+  static const _uiNotifyMinInterval = Duration(milliseconds: 900);
+  /// Keep only a short local window for live UI; longer ranges come from
+  /// paginated `GET /api/Glucose/history`.
+  static const _maxUiHistory = 500;
+
+  /// Map a server history row (mg/dL) into an SDK sample (mmol/L).
+  static GlucoseSample? sampleFromServerRow(Map<String, dynamic> row) {
+    final atRaw = row['measurementTime'] ?? row['MeasurementTime'];
+    final at = atRaw == null
+        ? null
+        : DateTime.tryParse(atRaw.toString())?.toLocal();
+    if (at == null) return null;
+    final mgRaw = row['glucoseValue'] ?? row['GlucoseValue'];
+    final mg = mgRaw == null ? null : (mgRaw as num).toDouble();
+    return GlucoseSample(
+      wearId: (row['sensorId'] as num?)?.toInt() ??
+          (row['SensorId'] as num?)?.toInt() ??
+          0,
+      seq: (row['sequenceNumber'] as num?)?.toInt() ??
+          (row['SequenceNumber'] as num?)?.toInt() ??
+          0,
+      measuredAt: at,
+      value: mg == null ? null : mg / 18.0182,
+      warmup: false,
+      abnormal: mg == null,
+      source: 'server',
+      temperature: (row['deviceTemperatureC'] as num?)?.toDouble() ??
+          (row['DeviceTemperatureC'] as num?)?.toDouble(),
+      voltage: (row['batteryVoltageMv'] as num?)?.toDouble() ??
+          (row['BatteryVoltageMv'] as num?)?.toDouble(),
+    );
+  }
+
+  Future<Map<String, dynamic>> fetchGlucoseHistoryPage({
+    required DateTime startUtc,
+    required DateTime endUtc,
+    int page = 1,
+    int pageSize = 300,
+    int? sensorId,
+  }) {
+    return api.getGlucoseHistory(
+      page: page,
+      pageSize: pageSize,
+      sensorId: sensorId,
+      startUtc: startUtc.toUtc().toIso8601String(),
+      endUtc: endUtc.toUtc().toIso8601String(),
+    );
+  }
+
+  Future<Map<String, dynamic>> fetchGlucoseSummary({
+    required DateTime startUtc,
+    required DateTime endUtc,
+    int? sensorId,
+  }) {
+    return api.getGlucoseSummary(
+      sensorId: sensorId,
+      startUtc: startUtc.toUtc().toIso8601String(),
+      endUtc: endUtc.toUtc().toIso8601String(),
+    );
+  }
+
+  void _notifyUiThrottled({bool force = false}) {
+    final now = DateTime.now();
+    if (force) {
+      _uiNotifyTimer?.cancel();
+      _uiNotifyTimer = null;
+      _lastUiNotifyAt = now;
+      notifyListeners();
+      return;
+    }
+    if (_lastUiNotifyAt == null ||
+        now.difference(_lastUiNotifyAt!) >= _uiNotifyMinInterval) {
+      _uiNotifyTimer?.cancel();
+      _uiNotifyTimer = null;
+      _lastUiNotifyAt = now;
+      notifyListeners();
+      return;
+    }
+    // Trailing edge: flush the latest state after the quiet window.
+    _uiNotifyTimer ??= Timer(
+      _uiNotifyMinInterval - now.difference(_lastUiNotifyAt!),
+      () {
+        _uiNotifyTimer = null;
+        _lastUiNotifyAt = DateTime.now();
+        notifyListeners();
+      },
+    );
+  }
+
+  void _trimHistory() {
+    if (history.length <= _maxUiHistory) return;
+    history = history.sublist(history.length - _maxUiHistory);
+  }
+
+  /// Append samples without rebuilding/sorting the full list on every tick.
+  void _appendHistory(Iterable<GlucoseSample> samples) {
+    for (final sample in samples) {
+      final start = history.length > 64 ? history.length - 64 : 0;
+      var duplicate = false;
+      for (var i = start; i < history.length; i++) {
+        final existing = history[i];
+        if (existing.wearId == sample.wearId && existing.seq == sample.seq) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (duplicate) continue;
+      if (history.isEmpty ||
+          !sample.measuredAt.isBefore(history.last.measuredAt)) {
+        history.add(sample);
+      } else {
+        history.add(sample);
+        history.sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
+      }
+    }
+    _trimHistory();
   }
 
   void _attachSdkStreams() {
@@ -1064,11 +1220,19 @@ class AppController extends ChangeNotifier {
     });
     _statusSub ??= CgmSdk.deviceStatus.listen((value) {
       deviceStatus = value;
-      notifyListeners();
+      _notifyUiThrottled();
     });
     _progressSub ??= CgmSdk.progress.listen((value) {
       progressText = '${value.kind}: ${value.done}/${value.total}';
-      notifyListeners();
+      final done = value.done >= value.total;
+      final now = DateTime.now();
+      if (done ||
+          _lastProgressNotifyAt == null ||
+          now.difference(_lastProgressNotifyAt!) >=
+              const Duration(seconds: 1)) {
+        _lastProgressNotifyAt = now;
+        _notifyUiThrottled(force: done);
+      }
     });
     _errorSub ??= CgmSdk.error.listen((value) {
       error = '${value.code}: ${value.message}';
@@ -1076,30 +1240,18 @@ class AppController extends ChangeNotifier {
     });
     _watchSub ??=
         CgmSdk.watch(
-          from: DateTime.now().subtract(const Duration(days: 15)),
+          from: DateTime.now().subtract(const Duration(hours: 36)),
         ).listen((samples) async {
           if (samples.isEmpty) return;
-          history = [...history, ...samples]
-            ..sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
-          final unique = <String, GlucoseSample>{
-            for (final sample in history)
-              '${sample.wearId}:${sample.seq}': sample,
-          };
-          history = unique.values.toList()
-            ..sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
-          latest = history.last;
-          notifyListeners();
+          _appendHistory(samples);
+          latest = history.isEmpty ? latest : history.last;
+          _notifyUiThrottled();
           await _upload(samples);
         });
     _glucoseSub ??= CgmSdk.glucose.listen((sample) {
       latest = sample;
-      if (!history.any(
-        (x) => x.wearId == sample.wearId && x.seq == sample.seq,
-      )) {
-        history = [...history, sample]
-          ..sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
-      }
-      notifyListeners();
+      _appendHistory([sample]);
+      _notifyUiThrottled();
       unawaited(_maybeLocalGlucoseAlert(sample));
       // Live glucose samples arrive on this stream independently of the
       // historical/watch stream. Upload them immediately so a live reading
@@ -1328,6 +1480,8 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _uiNotifyTimer?.cancel();
+    sessionRevision.dispose();
     _connectionSub?.cancel();
     _statusSub?.cancel();
     _watchSub?.cancel();

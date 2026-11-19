@@ -1187,7 +1187,16 @@ class ProfileScreen extends StatelessWidget {
         ),
       );
 
-      await controller.uploadProfilePicture(bytes, picked.name);
+      // UCrop output is JPEG; always send an image/* Content-Type (plain
+      // MultipartFile defaults to application/octet-stream → API 400).
+      final uploadName = croppedFile.path.toLowerCase().endsWith('.png')
+          ? 'avatar.png'
+          : 'avatar.jpg';
+      await controller.uploadProfilePicture(
+        bytes,
+        uploadName,
+        contentType: uploadName.endsWith('.png') ? 'image/png' : 'image/jpeg',
+      );
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
