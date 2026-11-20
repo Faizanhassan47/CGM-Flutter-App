@@ -5,7 +5,7 @@ import '../../widgets/pill_button.dart';
 import 'pairing_guide_screen.dart';
 
 /// Root gate for authenticated users who have not paired a CGM yet.
-/// Starts the pairing guide → device setup flow instead of Home.
+/// Offers pairing guide → device setup, or skip to Home for later setup.
 class DeviceOnboardingGate extends StatefulWidget {
   const DeviceOnboardingGate({super.key, required this.controller});
   final AppController controller;
@@ -16,17 +16,10 @@ class DeviceOnboardingGate extends StatefulWidget {
 
 class _DeviceOnboardingGateState extends State<DeviceOnboardingGate> {
   bool _starting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _startSetup();
-    });
-  }
+  bool _skipping = false;
 
   Future<void> _startSetup() async {
-    if (_starting || !mounted) return;
+    if (_starting || _skipping || !mounted) return;
     setState(() => _starting = true);
     try {
       await openDeviceSetup(context, widget.controller);
@@ -35,8 +28,19 @@ class _DeviceOnboardingGateState extends State<DeviceOnboardingGate> {
     }
   }
 
+  Future<void> _skipForLater() async {
+    if (_starting || _skipping) return;
+    setState(() => _skipping = true);
+    try {
+      await widget.controller.skipDeviceSetup();
+    } finally {
+      if (mounted) setState(() => _skipping = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final busy = _starting || _skipping;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -67,7 +71,19 @@ class _DeviceOnboardingGateState extends State<DeviceOnboardingGate> {
               PillButton(
                 text: 'Start device setup',
                 loading: _starting,
-                onPressed: _starting ? null : _startSetup,
+                onPressed: busy ? null : _startSetup,
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: busy ? null : _skipForLater,
+                child: Text(
+                  _skipping ? 'Opening home…' : 'Skip this, I will set up later',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMuted,
+                  ),
+                ),
               ),
             ],
           ),

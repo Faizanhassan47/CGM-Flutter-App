@@ -62,9 +62,35 @@ class AppController extends ChangeNotifier {
   /// When set, root shows the email verification screen before onboarding.
   String? pendingEmailVerification;
 
-  /// True until the user has a live wear session or a stored device binding.
+  /// User chose "I'll set up later" on the device onboarding gate.
+  bool deviceSetupSkipped = false;
+  static const _deviceSetupSkippedKey = 'pref_device_setup_skipped';
+
+  /// True until the user has a live wear session, stored binding, or skipped setup.
   bool get needsDeviceSetup =>
-      wear == null && _binding == null && activeDevice == null;
+      !deviceSetupSkipped &&
+      wear == null &&
+      _binding == null &&
+      activeDevice == null;
+
+  Future<void> skipDeviceSetup() async {
+    deviceSetupSkipped = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_deviceSetupSkippedKey, true);
+    _bumpSession();
+    notifyListeners();
+  }
+
+  Future<void> _restoreDeviceSetupSkipped() async {
+    final prefs = await SharedPreferences.getInstance();
+    deviceSetupSkipped = prefs.getBool(_deviceSetupSkippedKey) ?? false;
+  }
+
+  Future<void> _clearDeviceSetupSkipped() async {
+    deviceSetupSkipped = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_deviceSetupSkippedKey);
+  }
 
   bool get needsEmailVerification =>
       pendingEmailVerification != null &&
@@ -85,9 +111,17 @@ class AppController extends ChangeNotifier {
   /// After auth: clear stale local pairing, then restore this account's device.
   Future<void> _syncDeviceStateAfterAuth({required bool forceSetup}) async {
     await _clearLocalDeviceState();
-    if (forceSetup) return;
+    if (forceSetup) {
+      await _clearDeviceSetupSkipped();
+      return;
+    }
     await loadActiveDeviceAndSensor();
     wear = await CgmSdk.currentWear();
+    if (activeDevice != null || _binding != null || wear != null) {
+      await _clearDeviceSetupSkipped();
+    } else {
+      await _restoreDeviceSetupSkipped();
+    }
   }
   double targetLow = 90.0;
   double targetHigh = 130.0;
@@ -311,6 +345,13 @@ class AppController extends ChangeNotifier {
       sdkReady = true;
       wear = await CgmSdk.currentWear();
       _binding = await api.storedBinding();
+      if (authenticated) {
+        if (activeDevice != null || _binding != null || wear != null) {
+          await _clearDeviceSetupSkipped();
+        } else {
+          await _restoreDeviceSetupSkipped();
+        }
+      }
       _attachSdkStreams();
       await refreshHistory();
     } catch (e) {
@@ -1028,6 +1069,7 @@ class AppController extends ChangeNotifier {
       alertsPage = 1;
       family = null;
       familyMembers = [];
+      await _clearDeviceSetupSkipped();
       await _clearUploadQueue();
       await api.clearBackendBinding();
       try {
@@ -1393,6 +1435,7 @@ class AppController extends ChangeNotifier {
       }
       await loadActiveDeviceAndSensor();
       await refreshHistory();
+      await _clearDeviceSetupSkipped();
       _bumpSession();
     });
   }
