@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
+import '../../core/device_time.dart';
 import '../../core/ui_perf.dart';
 import '../../services/notification_service.dart';
 import '../../state/app_controller.dart';
@@ -258,13 +259,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   final criticalB = _category(b) == AlertCategory.critical;
                   if (criticalA != criticalB) return criticalA ? -1 : 1;
                   final timeA =
-                      DateTime.tryParse(
-                        '${a['timestamp'] ?? a['AlertTime'] ?? ''}',
+                      DeviceTime.parseApi(
+                        a['timestamp'] ?? a['AlertTime'],
                       ) ??
                       DateTime(0);
                   final timeB =
-                      DateTime.tryParse(
-                        '${b['timestamp'] ?? b['AlertTime'] ?? ''}',
+                      DeviceTime.parseApi(
+                        b['timestamp'] ?? b['AlertTime'],
                       ) ??
                       DateTime(0);
                   return timeB.compareTo(timeA);
@@ -432,7 +433,12 @@ class _AlertsScreenState extends State<AlertsScreen> {
                           a['AlertTime'] ??
                           DateTime.now().toIso8601String();
                       final timeStr = DateFormat('h:mm a MMM d').format(
-                        DateTime.tryParse(timeRaw.toString()) ?? DateTime.now(),
+                        DeviceTime.parseApi(timeRaw) ?? DeviceTime.now(),
+                      );
+                      final icon = _alertIcon(
+                        title: '$title',
+                        message: '$msg',
+                        isCritical: isCritical,
                       );
 
                       return Container(
@@ -462,9 +468,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                isCritical
-                                    ? Icons.warning_amber_rounded
-                                    : Icons.notifications_active_outlined,
+                                icon,
                                 color: isCritical
                                     ? AppTheme.dangerRed
                                     : AppTheme.primaryPurple,
@@ -550,5 +554,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
         },
       ),
     );
+  }
+
+  IconData _alertIcon({
+    required String title,
+    required String message,
+    required bool isCritical,
+  }) {
+    final text = '$title $message'.toLowerCase();
+    if (text.contains('water') || text.contains('hydration')) {
+      return Icons.water_drop_outlined;
+    }
+    if (text.contains('meal') || text.contains('carbs')) {
+      return Icons.restaurant_outlined;
+    }
+    if (isCritical) return Icons.warning_amber_rounded;
+    return Icons.notifications_active_outlined;
   }
 }

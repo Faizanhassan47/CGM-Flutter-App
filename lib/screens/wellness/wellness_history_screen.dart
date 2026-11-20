@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../core/device_time.dart';
 import '../../services/api_service.dart';
 import '../../widgets/page_top_bar.dart';
 
@@ -222,9 +223,11 @@ class _WellnessHistoryScreenState extends State<WellnessHistoryScreen>
       ),
     ],
   );
-  String _date(dynamic value) =>
-      DateTime.tryParse('$value')?.toLocal().toString().substring(0, 16) ??
-      '$value';
+  String _date(dynamic value) {
+    final at = DeviceTime.parseApi(value);
+    if (at == null) return '$value';
+    return DeviceTime.dateTime(at);
+  }
 
   Future<void> _confirmDelete(Future<void> Function() action) async {
     final yes =

@@ -352,7 +352,7 @@ class NotificationService {
         final mealTitle =
             'Time for ${schedule['customName'] ?? schedule['mealType'] ?? 'your meal'}';
         const mealBody =
-            'It\'s time for your scheduled meal. You can log it in Circle.';
+            'Have you eaten? Log what you ate and carbs (g).';
         final mealPayload =
             'wellness:meal:${'${schedule['mealType'] ?? 'snack'}'.toLowerCase()}';
         final mealId = id++;
@@ -365,7 +365,7 @@ class NotificationService {
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           payload: mealPayload,
         );
-        // Mirror into in-app Notifications once the slot time has arrived.
+        // Mirror into in-app Notifications (same list as water reminders).
         reminderRows.add({
           'id': 'meal:$mealId:${when.millisecondsSinceEpoch}',
           'title': mealTitle,

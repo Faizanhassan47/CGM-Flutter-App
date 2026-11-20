@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/device_time.dart';
 import '../../services/report_pdf_service.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/page_top_bar.dart';
@@ -117,8 +118,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         row['time'] ??
         row['Time'] ??
         row['measuredAt'];
-    if (raw is DateTime) return raw.toLocal();
-    return DateTime.tryParse('$raw')?.toLocal();
+    return DeviceTime.parseApi(raw);
   }
 
   String _fmt(num? n, {int decimals = 0}) {

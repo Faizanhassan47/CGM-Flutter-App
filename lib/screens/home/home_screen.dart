@@ -346,7 +346,7 @@ class HomeScreen extends StatelessWidget {
                 ? warmupLabel
                 : scannedAt == null
                 ? 'No reading yet'
-                : 'Last reading at ${DateFormat.jm().format(scannedAt)}',
+                : 'Last reading at ${DateFormat.jm().format(scannedAt.toLocal())}',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

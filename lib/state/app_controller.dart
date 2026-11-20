@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_config.dart';
+import '../core/device_time.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 import '../services/wellness_offline_store.dart';
@@ -744,8 +745,22 @@ class AppController extends ChangeNotifier {
 
   Future<void> login(String username, String password) async {
     await _run(() async {
-      await api.login(username.trim(), password);
+      final res = await api.login(username.trim(), password);
       authenticated = true;
+      final userMap = res['user'];
+      if (userMap is Map) {
+        final name = userMap['fullName']?.toString().trim();
+        final email = userMap['email']?.toString().trim();
+        if (name != null && name.isNotEmpty) fullName = name;
+        if (email != null && email.isNotEmpty) userEmail = email;
+        authProvider = userMap['authProvider']?.toString() ?? authProvider;
+        hasPassword = userMap['hasPassword'] == true;
+        profileCompleted = userMap['profileCompleted'] == true;
+        final code = userMap['referralCode']?.toString().trim();
+        if (code != null && code.isNotEmpty) referralCode = code;
+        preferredGlucoseUnit =
+            userMap['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
+      }
       _bumpSession();
       notifyListeners();
       unawaited(loadUserProfile());
@@ -822,12 +837,18 @@ class AppController extends ChangeNotifier {
       phoneNumber = phone ?? '';
       dateOfBirth = dob ?? '';
       gender = selectedGender ?? '';
+      profileCompleted = true;
       final userMap = res['user'];
-      if (userMap is Map<String, dynamic>) {
+      if (userMap is Map) {
         final code = userMap['referralCode']?.toString().trim();
         if (code != null && code.isNotEmpty) {
           referralCode = code;
         }
+        if (userMap['profileCompleted'] == true) {
+          profileCompleted = true;
+        }
+        preferredGlucoseUnit =
+            userMap['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
       }
       _bumpSession();
       notifyListeners();
@@ -1338,9 +1359,8 @@ class AppController extends ChangeNotifier {
   /// Map a server history row (mg/dL) into an SDK sample (mmol/L).
   static GlucoseSample? sampleFromServerRow(Map<String, dynamic> row) {
     final atRaw = row['measurementTime'] ?? row['MeasurementTime'];
-    final at = atRaw == null
-        ? null
-        : DateTime.tryParse(atRaw.toString())?.toLocal();
+    // API/MySQL times are UTC; show on device region clock.
+    final at = DeviceTime.parseApi(atRaw);
     if (at == null) return null;
     final mgRaw = row['glucoseValue'] ?? row['GlucoseValue'];
     final mg = mgRaw == null ? null : (mgRaw as num).toDouble();
@@ -1491,13 +1511,14 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// Prefer phone clock only for a fresh live packet; otherwise sensor time.
+  /// Device-region clock for Home "Last reading at".
   DateTime? get lastReadingDisplayAt {
     final sample = latest;
     if (sample != null && _isFreshLiveSample(sample)) {
-      return lastLiveAt ?? sample.measuredAt.toLocal();
+      // Prefer sensor UTC→local so it matches History / DB PakistanTime.
+      return sample.measuredAt.toLocal();
     }
-    return sample?.measuredAt.toLocal() ?? lastLiveAt;
+    return sample?.measuredAt.toLocal() ?? lastLiveAt?.toLocal();
   }
 
   void _attachSdkStreams() {

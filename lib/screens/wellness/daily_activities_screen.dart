@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
+import '../../core/device_time.dart';
 import '../../services/api_service.dart';
 import '../../services/wellness_offline_store.dart';
 import '../../widgets/page_top_bar.dart';
@@ -128,7 +129,7 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
     }
   }
 
-  List<Map<String, dynamic>> _pendingWaterForDay(
+  List<Map<String, dynamic>> _pendingOfflineForDay(
     List<Map<String, dynamic>> pending,
     Set<String> knownClientIds,
   ) {
@@ -136,7 +137,8 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
     final toUtc = _end.toUtc();
     final rows = <Map<String, dynamic>>[];
     for (final event in pending) {
-      if (event['kind'] != 'water') continue;
+      final kind = '${event['kind']}';
+      if (kind != 'water' && kind != 'meal') continue;
       final data = Map<String, dynamic>.from(event['data'] as Map? ?? {});
       final clientId = '${data['clientEventId'] ?? ''}';
       if (clientId.isNotEmpty && knownClientIds.contains(clientId)) continue;
@@ -144,19 +146,61 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
       if (at == null) continue;
       final utc = at.isUtc ? at : at.toUtc();
       if (utc.isBefore(fromUtc) || !utc.isBefore(toUtc)) continue;
-      final amount = int.tryParse('${data['amountMl'] ?? ''}') ?? 0;
-      rows.add({
-        'id': null,
-        'eventType': 'water',
-        'occurredAtUtc': data['occurredAtUtc'],
-        'clientEventId': clientId,
-        'payload': {'amountMl': amount},
-        'amountMl': amount,
-        '_waterLog': true,
-        '_pending': true,
-      });
+      if (kind == 'water') {
+        final amount = int.tryParse('${data['amountMl'] ?? ''}') ?? 0;
+        rows.add({
+          'id': null,
+          'eventType': 'water',
+          'occurredAtUtc': data['occurredAtUtc'],
+          'clientEventId': clientId,
+          'payload': {'amountMl': amount},
+          'amountMl': amount,
+          '_waterLog': true,
+          '_pending': true,
+        });
+      } else {
+        final food =
+            '${data['foodDescription'] ?? data['foodItems'] ?? ''}'.trim();
+        final carbs = num.tryParse('${data['carbohydratesGrams'] ?? ''}');
+        rows.add({
+          'id': null,
+          'eventType': 'meal',
+          'occurredAtUtc': data['occurredAtUtc'],
+          'clientEventId': clientId,
+          'payload': {
+            'mealType': data['mealType'] ?? 'snack',
+            'foodItems': food,
+            'foodDescription': food,
+            if (carbs != null) 'carbohydratesGrams': carbs,
+          },
+          '_mealLog': true,
+          '_pending': true,
+        });
+      }
     }
     return rows;
+  }
+
+  Map<String, dynamic> _mapMealRow(Map<String, dynamic> row) {
+    final food =
+        '${row['foodDescription'] ?? row['FoodDescription'] ?? ''}'.trim();
+    final mealType =
+        '${row['mealType'] ?? row['MealType'] ?? 'snack'}'.toLowerCase();
+    final carbsRaw = row['carbohydratesGrams'] ?? row['CarbohydratesGrams'];
+    final carbs = num.tryParse('$carbsRaw');
+    return {
+      ...row,
+      'eventType': 'meal',
+      'occurredAtUtc':
+          row['occurredAtUtc'] ?? row['OccurredAtUtc'] ?? row['occurredAt'],
+      'payload': {
+        'mealType': mealType,
+        'foodItems': food,
+        'foodDescription': food,
+        if (carbs != null) 'carbohydratesGrams': carbs,
+      },
+      '_mealLog': true,
+    };
   }
 
   Future<void> _load() async {
@@ -168,12 +212,18 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
       final results = await Future.wait([
         widget.api.getActivities(from: from, to: to),
         widget.api.getWater(from: from, to: to),
+        widget.api.getMeals(from: from, to: to, page: 1),
       ]);
-      final activityRows = results[0];
-      final waterRows = results[1];
+      final activityRows = results[0] as List<dynamic>;
+      final waterRows = results[1] as List<dynamic>;
+      final mealsBody = results[2] as Map<String, dynamic>;
+      final mealItems = (mealsBody['items'] as List?) ?? const [];
       final knownClientIds = <String>{};
       final merged = <Map<String, dynamic>>[
-        ...activityRows.map((e) => (e as Map).cast<String, dynamic>()),
+        // Activity meals are skipped — MealLogs is the source of truth.
+        ...activityRows
+            .map((e) => (e as Map).cast<String, dynamic>())
+            .where((e) => '${e['eventType']}' != 'meal'),
         ...waterRows.map((e) {
           final row = (e as Map).cast<String, dynamic>();
           final amount = _waterAmount(row) ?? 0;
@@ -187,9 +237,15 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
             '_waterLog': true,
           };
         }),
+        ...mealItems.map((e) {
+          final row = (e as Map).cast<String, dynamic>();
+          final clientId = '${row['clientEventId'] ?? row['ClientEventId'] ?? ''}';
+          if (clientId.isNotEmpty) knownClientIds.add(clientId);
+          return _mapMealRow(row);
+        }),
       ];
       final pending = await WellnessOfflineStore.pending();
-      merged.addAll(_pendingWaterForDay(pending, knownClientIds));
+      merged.addAll(_pendingOfflineForDay(pending, knownClientIds));
       if (!mounted) return;
       setState(() {
         items = merged
@@ -506,7 +562,7 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
   Widget _timelineTile(Map<String, dynamic> row) {
     final kind = '${row['eventType']}';
     final payload = (row['payload'] as Map?)?.cast<String, dynamic>() ?? {};
-    final at = DateTime.tryParse('${row['occurredAtUtc']}')?.toLocal();
+    final at = DeviceTime.parseApi(row['occurredAtUtc']);
     final title = _title(kind, payload);
     final detail = _detail(kind, payload);
     final badge = _badge(kind, payload);
@@ -525,9 +581,8 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
                 pending
                     .where(
                       (e) =>
-                          !(e['kind'] == 'water' &&
-                              '${(e['data'] as Map?)?['clientEventId']}' ==
-                                  clientId),
+                          '${(e['data'] as Map?)?['clientEventId']}' !=
+                          clientId,
                     )
                     .toList(),
               );
@@ -538,6 +593,8 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
             if (id == null) return;
             if (row['_waterLog'] == true) {
               await widget.api.deleteWater(id);
+            } else if (row['_mealLog'] == true) {
+              await widget.api.deleteMeal(id);
             } else {
               await widget.api.deleteActivity(id);
             }
@@ -645,7 +702,7 @@ class _ActivityLogTabState extends State<_ActivityLogTab>
   String _detail(String kind, Map<String, dynamic> payload) {
     switch (kind) {
       case 'meal':
-        return '${payload['foodItems'] ?? ''}';
+        return '${payload['foodItems'] ?? payload['foodDescription'] ?? ''}';
       case 'water':
         final amount = payload['amountMl'];
         return amount == null ? 'From reminder / log' : '$amount mL hydration';
@@ -778,13 +835,36 @@ class _AddEventPageState extends State<_AddEventPage> {
 
     final payload = <String, dynamic>{};
     if (type == 'meal') {
-      payload.addAll({
-        'mealType': mealType,
-        'foodItems': food.text.trim(),
-        if ((num.tryParse(carbs.text.trim()) ?? 0) > 0)
-          'carbohydratesGrams': num.tryParse(carbs.text.trim()),
-      });
-    } else if (type == 'insulin') {
+      final foodText = food.text.trim();
+      if (foodText.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter what you ate.')),
+        );
+        return;
+      }
+      setState(() => saving = true);
+      try {
+        await widget.api.createMeal({
+          'mealType': mealType,
+          'foodDescription': foodText,
+          if ((num.tryParse(carbs.text.trim()) ?? 0) > 0)
+            'carbohydratesGrams': num.tryParse(carbs.text.trim()),
+          'occurredAtUtc': when.toUtc().toIso8601String(),
+          'clientEventId': 'meal-${DateTime.now().microsecondsSinceEpoch}',
+        });
+        if (mounted) Navigator.pop(context, true);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('$e')));
+        }
+      } finally {
+        if (mounted) setState(() => saving = false);
+      }
+      return;
+    }
+    if (type == 'insulin') {
       payload.addAll({
         'name': insulinName.text.trim(),
         'insulinType': insulinType.text.trim(),

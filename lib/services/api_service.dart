@@ -185,8 +185,10 @@ class ApiService {
   Future<void> _saveTokens(String access, String refresh) async {
     _accessToken = access;
     _refreshToken = refresh;
-    await _storage.write(key: 'aima_access_token', value: access);
-    await _storage.write(key: 'aima_refresh_token', value: refresh);
+    await Future.wait([
+      _storage.write(key: 'aima_access_token', value: access),
+      _storage.write(key: 'aima_refresh_token', value: refresh),
+    ]);
   }
 
   Future<void> _clearTokens() async {
@@ -201,17 +203,19 @@ class ApiService {
   // ===========================================================================
 
   /// Standard email & password login.
-  Future<void> login(String email, String password) async {
-    final response = await _client.post(
-      _uri('api/Auth/login'),
-      headers: const {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'email': email,
-        'password': password,
-        'rememberMe': true,
-        'deviceInfo': 'Circle Flutter CGM',
-      }),
-    );
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await _client
+        .post(
+          _uri('api/Auth/login'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': email,
+            'password': password,
+            'rememberMe': true,
+            'deviceInfo': 'Circle Flutter CGM',
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
     final data = _decode(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(
@@ -220,6 +224,7 @@ class ApiService {
       );
     }
     await _saveTokens('${data['accessToken']}', '${data['refreshToken']}');
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   /// Social OAuth login (Google, Apple, etc.).

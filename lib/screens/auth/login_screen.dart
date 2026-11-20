@@ -22,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool obscurePassword = true;
+  bool signingIn = false;
   String? validationError;
 
   @override
@@ -31,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _onSignIn() async {
+  Future<void> _onSignIn() async {
     final email = emailController.text.trim();
     final password = passwordController.text;
 
@@ -44,11 +45,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() => validationError = null);
+    setState(() {
+      validationError = null;
+      signingIn = true;
+    });
+    widget.controller.clearError();
     try {
       await widget.controller.login(email, password);
     } catch (_) {
-      // widget.controller.error has message
+      if (!mounted) return;
+      setState(() {
+        validationError =
+            widget.controller.error ?? 'Login failed. Check email and password.';
+      });
+    } finally {
+      if (mounted) setState(() => signingIn = false);
     }
   }
 
@@ -79,8 +90,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Only display auth/validation errors on login screen, not background SDK/BLE errors
-    final errorMessage = validationError;
+    // Prefer local validation; fall back to controller auth errors.
+    final errorMessage = validationError ??
+        (widget.controller.error?.contains('SDK') == true
+            ? null
+            : widget.controller.error);
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -197,8 +211,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 24),
                   PillButton(
                     text: 'Sign In',
-                    loading: widget.controller.loading,
-                    onPressed: _onSignIn,
+                    loading: signingIn,
+                    onPressed: signingIn ? null : _onSignIn,
                   ),
 
                   const SizedBox(height: 18),

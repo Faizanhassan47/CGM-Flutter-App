@@ -28,6 +28,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool obscurePassword = true;
   bool obscureConfirmPassword = true;
   bool agreeTerms = false;
+  bool registering = false;
   String? validationError;
 
   @override
@@ -57,7 +58,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  void _onRegister() async {
+  Future<void> _onRegister() async {
     final name = nameController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text;
@@ -89,7 +90,11 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    setState(() => validationError = null);
+    setState(() {
+      validationError = null;
+      registering = true;
+    });
+    widget.controller.clearError();
     try {
       await widget.controller.register(
         name,
@@ -106,7 +111,15 @@ class _SignupScreenState extends State<SignupScreen> {
       if (mounted && widget.controller.authenticated) {
         Navigator.of(context).pop();
       }
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        validationError = widget.controller.error ??
+            'Could not create account. Try again.';
+      });
+    } finally {
+      if (mounted) setState(() => registering = false);
+    }
   }
 
   void _onGoogleSignIn() async {
@@ -341,8 +354,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   const SizedBox(height: 24),
                   PillButton(
                     text: 'Create Account',
-                    loading: widget.controller.loading,
-                    onPressed: _onRegister,
+                    loading: registering,
+                    onPressed: registering ? null : _onRegister,
                   ),
 
                   const SizedBox(height: 18),

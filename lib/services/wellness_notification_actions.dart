@@ -14,6 +14,7 @@ const int wellnessQuickWaterMl = 250;
 const int wellnessLargeWaterMl = 500;
 const int wellnessMaxWaterMl = 2000;
 const int wellnessSnoozeMinutes = 30;
+const double wellnessMaxMealCarbsG = 1000;
 
 int? parseWaterAmount(String? raw) {
   final text = raw?.trim() ?? '';
@@ -21,6 +22,26 @@ int? parseWaterAmount(String? raw) {
   final value = int.tryParse(text);
   if (value == null || value < 1 || value > wellnessMaxWaterMl) return null;
   return value;
+}
+
+/// Parses "chicken rice 40" → food + optional trailing carbs grams.
+({String food, double? carbs})? parseMealLogInput(String? raw) {
+  final text = raw?.trim() ?? '';
+  if (text.isEmpty || text.length > 4000) return null;
+  final match = RegExp(
+    r'^(.*?)(?:\s+(\d{1,4}(?:\.\d{1,2})?))\s*$',
+  ).firstMatch(text);
+  if (match != null) {
+    final food = (match.group(1) ?? '').trim();
+    final carbs = double.tryParse(match.group(2) ?? '');
+    if (food.isNotEmpty &&
+        carbs != null &&
+        carbs >= 0 &&
+        carbs <= wellnessMaxMealCarbsG) {
+      return (food: food, carbs: carbs);
+    }
+  }
+  return (food: text, carbs: null);
 }
 
 String mealTypeFromPayload(String? payload) {
@@ -79,7 +100,7 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
     await WellnessReminderLog.add(
       id: 'meal:tap:$id:${DateTime.now().millisecondsSinceEpoch}',
       title: 'Meal reminder',
-      message: 'Have you eaten? Log your meal in Circle.',
+      message: 'Have you eaten? Log what you ate and carbs (g).',
       at: DateTime.now(),
     );
     return;
@@ -92,7 +113,7 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
     await plugin.zonedSchedule(
       id: 201000 + (id % 500),
       title: 'Meal reminder',
-      body: 'Have you eaten? Log your meal.',
+      body: 'Have you eaten? Log what you ate and carbs (g).',
       scheduledDate: when,
       notificationDetails: mealNotificationDetails(),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -104,6 +125,7 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
 
   int? amount;
   String? mealText;
+  double? mealCarbs;
   if (action == 'water_250') amount = wellnessQuickWaterMl;
   if (action == 'water_500') amount = wellnessLargeWaterMl;
   if (action == 'water_custom') {
@@ -114,11 +136,22 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
     }
   }
   if (action == 'meal_log') {
-    mealText = response.input?.trim() ?? '';
-    if (mealText.isEmpty || mealText.length > 4000) {
-      await confirm('Enter a short description of what you ate.');
+    final parsed = parseMealLogInput(response.input);
+    if (parsed == null) {
+      await confirm('Enter food and optional carbs g (e.g. rice 40).');
       return;
     }
+    mealText = parsed.food;
+    mealCarbs = parsed.carbs;
+  }
+  if (action == 'meal_carbs') {
+    final grams = double.tryParse(response.input?.trim() ?? '');
+    if (grams == null || grams < 0 || grams > wellnessMaxMealCarbsG) {
+      await confirm('Enter carbs from 0 to ${wellnessMaxMealCarbsG.round()} g.');
+      return;
+    }
+    mealText = 'Meal';
+    mealCarbs = grams;
   }
   if (amount == null && mealText == null) return;
 
@@ -132,11 +165,14 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
       at: DateTime.now(),
     );
   } else {
-    await confirm('Meal saved.');
+    final carbsLabel = mealCarbs == null
+        ? ''
+        : ' · ${mealCarbs % 1 == 0 ? mealCarbs.toInt() : mealCarbs} g carbs';
+    await confirm('Meal logged: $mealText$carbsLabel');
     await WellnessReminderLog.add(
       id: 'meal:logged:$id:${DateTime.now().millisecondsSinceEpoch}',
       title: 'Meal logged',
-      message: mealText ?? 'Meal saved from reminder.',
+      message: '$mealText$carbsLabel added from meal reminder.',
       at: DateTime.now(),
     );
   }
@@ -165,8 +201,10 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
           'data': {
             'mealType': mealTypeFromPayload(response.payload),
             'foodDescription': mealText,
+            if (mealCarbs != null) 'carbohydratesGrams': mealCarbs,
             'occurredAtUtc': when,
-            'clientEventId': 'ntf-$id-meal-${mealText.hashCode}',
+            'clientEventId':
+                'ntf-$id-meal-${DateTime.now().millisecondsSinceEpoch}',
           },
         });
       }
@@ -194,8 +232,10 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
       final event = {
         'mealType': mealTypeFromPayload(response.payload),
         'foodDescription': mealText,
+        if (mealCarbs != null) 'carbohydratesGrams': mealCarbs,
         'occurredAtUtc': when,
-        'clientEventId': 'ntf-$id-meal-${mealText.hashCode}',
+        'clientEventId':
+            'ntf-$id-meal-${DateTime.now().millisecondsSinceEpoch}',
       };
       try {
         await api.createMeal(event).timeout(const Duration(seconds: 8));
@@ -249,14 +289,24 @@ NotificationDetails mealNotificationDetails() {
       channelDescription: 'Optional meal and hydration reminders',
       importance: Importance.high,
       priority: Priority.high,
-      visibility: NotificationVisibility.private,
+      visibility: NotificationVisibility.public,
       actions: [
         AndroidNotificationAction(
           'meal_log',
           'Log meal',
           cancelNotification: false,
           inputs: [
-            AndroidNotificationActionInput(label: 'What did you eat?'),
+            AndroidNotificationActionInput(
+              label: 'Food and carbs g (e.g. rice 40)',
+            ),
+          ],
+        ),
+        AndroidNotificationAction(
+          'meal_carbs',
+          'Carbs only',
+          cancelNotification: false,
+          inputs: [
+            AndroidNotificationActionInput(label: 'Carbohydrates (g)'),
           ],
         ),
         AndroidNotificationAction(
