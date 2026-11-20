@@ -26,9 +26,15 @@ abstract final class AppColors {
   static const surface = Color(0xFFFFFFFF);
   static const surfaceBorder = Color(0xFFF0E3DF);
 
-  static const textPrimary = Color(0xFF1F2937); // Deep slate gray for bold/headings
-  static const textBody = Color(0xFF4B5563);    // Balanced neutral gray for body text
-  static const textSecondary = Color(0xFF6B7280); // Muted gray for captions/subtitles
+  static const textPrimary = Color(
+    0xFF1F2937,
+  ); // Deep slate gray for bold/headings
+  static const textBody = Color(
+    0xFF4B5563,
+  ); // Balanced neutral gray for body text
+  static const textSecondary = Color(
+    0xFF6B7280,
+  ); // Muted gray for captions/subtitles
   static const textDisabled = Color(0xFF9CA3AF);
   static const inputBorder = Color(0xFFD1D5DB);
 
@@ -57,6 +63,7 @@ abstract final class AppPalette {
   static const hexFF0288D1 = AppColors.primaryDark;
   static const hexFF0369A1 = AppColors.primaryDark;
   static const hexFF10B981 = Color(0XFF10B981);
+  static const hexFF159669 = Color(0XFF159669);
   static const hexFF15803D = Color(0XFF15803D);
   static const hexFF16A34A = Color(0XFF16A34A);
   static const hexFF22C55E = Color(0XFF22C55E);
@@ -65,6 +72,7 @@ abstract final class AppPalette {
   static const hexFF3B2A68 = AppColors.textPrimary;
   static const hexFF3C096C = AppColors.dangerDark;
   static const hexFF4A148C = AppColors.primaryDark;
+  static const hexFF489CCD = Color(0XFF489CCD);
   static const hexFF4A3E5C = AppColors.textSecondary;
   static const hexFF4ADE80 = Color(0XFF4ADE80);
   static const hexFF512DA8 = AppColors.primaryDark;
@@ -99,11 +107,13 @@ abstract final class AppPalette {
   static const hexFFD3CCE8 = AppColors.primaryBorder;
   static const hexFFD63031 = Color(0XFFD63031);
   static const hexFFD6D1E8 = AppColors.surfaceBorder;
+  static const hexFFD95A61 = Color(0XFFD95A61);
   static const hexFFD97706 = Color(0XFFD97706);
   static const hexFFDC2626 = Color(0XFFDC2626);
   static const hexFFDCFCE7 = Color(0XFFDCFCE7);
   static const hexFFDDD2F0 = AppColors.primaryBorder;
   static const hexFFDDD8EC = AppColors.surfaceBorder;
+  static const hexFFDFE3EA = Color(0XFFDFE3EA);
   static const hexFFE0F2FE = AppColors.primarySoft;
   static const hexFFE0F7FD = AppColors.primarySoft;
   static const hexFFE11D48 = Color(0XFFE11D48);
@@ -136,6 +146,7 @@ abstract final class AppPalette {
   static const hexFFF3F7FF = AppColors.primarySoft;
   static const hexFFF4ECF7 = AppColors.primarySoft;
   static const hexFFF4EFF8 = AppColors.primarySoft;
+  static const hexFFF4F6F8 = Color(0XFFF4F6F8);
   static const hexFFF59E0B = Color(0XFFF59E0B);
   static const hexFFF5F3FB = AppColors.primarySoft;
   static const hexFFF6F3FA = AppColors.primarySoft;
@@ -157,10 +168,14 @@ abstract final class AppPalette {
   static const hexFFFEE2E2 = Color(0XFFFEE2E2);
   static const hexFFFEF3C7 = Color(0XFFFEF3C7);
   static const hexFFFFE4E6 = Color(0XFFFFE4E6);
+  static const hexFFFF554A = Color(0XFFFF554A);
+  static const hexFFFF913D = Color(0XFFFF913D);
+  static const hexFFFFA337 = Color(0XFFFFA337);
   static const hexFFFFEBEE = Color(0XFFFFEBEE);
   static const hexFFFFF1F2 = Color(0XFFFFF1F2);
   static const hexFFFFF3E0 = Color(0XFFFFF3E0);
   static const hexFFFFF5F5 = Color(0XFFFFF5F5);
+  static const hexFFFFF8F5 = Color(0XFFFFF8F5);
   static const hexFFFFF9E6 = Color(0XFFFFF9E6);
   static const hexFFFFF9F0 = Color(0XFFFFF9F0);
 }

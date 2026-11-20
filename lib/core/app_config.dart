@@ -7,6 +7,9 @@ class AppConfig {
   static String wsUrl = '';
   static String googleServerClientId = '';
 
+  /// New-sensor heating / calibration window (sensor needs ~2 hours).
+  static const int sensorWarmupMinutes = 120;
+
   static const String defaultLanguage = String.fromEnvironment(
     'APP_DEFAULT_LANGUAGE',
     defaultValue: 'English',

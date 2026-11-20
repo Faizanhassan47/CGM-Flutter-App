@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../services/notification_service.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/page_top_bar.dart';
+import 'alert_category.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key, required this.controller});
@@ -19,6 +22,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   late bool criticalAlerts;
   late bool sensorAlerts;
   late bool reportReminders;
+  static const _pageSize = 25;
 
   @override
   void initState() {
@@ -26,7 +30,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     criticalAlerts = widget.controller.criticalAlerts;
     sensorAlerts = widget.controller.sensorAlerts;
     reportReminders = widget.controller.reportReminders;
-    widget.controller.loadAlerts();
+    unawaited(widget.controller.loadAlerts(pageSize: _pageSize));
   }
 
   void _savePreferences() {
@@ -42,10 +46,18 @@ class _AlertsScreenState extends State<AlertsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Clear alert history?'),
-        content: const Text('This removes the alerts shown here. New alerts will still appear.'),
+        content: const Text(
+          'This removes the alerts shown here. New alerts will still appear.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Clear')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
         ],
       ),
     );
@@ -54,7 +66,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
       await widget.controller.clearAlertHistory();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not clear alerts: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not clear alerts: $e')));
     }
   }
 
@@ -81,15 +95,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
         return StatefulBuilder(
           builder: (sheetContext, setSheetState) {
             Future<void> saveWellness() async {
-              final response = await widget.controller.api.updateWellnessReminders({
-                'mealEnabled': mealEnabled,
-                'waterEnabled': waterEnabled,
-              });
-              final settings = (response['settings'] as Map?)?.cast<String, dynamic>() ?? {
-                'mealEnabled': mealEnabled,
-                'waterEnabled': waterEnabled,
-              };
-              final nextSchedules = (response['schedules'] as List?) ?? schedules;
+              final response = await widget.controller.api
+                  .updateWellnessReminders({
+                    'mealEnabled': mealEnabled,
+                    'waterEnabled': waterEnabled,
+                  });
+              final settings =
+                  (response['settings'] as Map?)?.cast<String, dynamic>() ??
+                  {'mealEnabled': mealEnabled, 'waterEnabled': waterEnabled};
+              final nextSchedules =
+                  (response['schedules'] as List?) ?? schedules;
               await NotificationService.instance.scheduleWellness(
                 settings: settings,
                 schedules: nextSchedules,
@@ -97,14 +112,23 @@ class _AlertsScreenState extends State<AlertsScreen> {
             }
 
             return Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.viewInsetsOf(sheetContext).bottom + 24),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                16,
+                20,
+                MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Notification preferences',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.darkPurple),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.darkPurple,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   SwitchListTile(
@@ -174,18 +198,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
-  bool _isCritical(dynamic rawAlert) {
-    if (rawAlert is! Map) return false;
-    final alert = Map<String, dynamic>.from(rawAlert);
-    final flag = alert['isCritical'] ?? alert['IsCritical'];
-    final severity = (alert['severity'] ?? alert['Severity'] ?? '')
-        .toString()
-        .toLowerCase();
-    return flag == true || flag == 1 || flag == '1' || severity == 'critical';
-  }
+  AlertCategory _category(dynamic alert) =>
+      alert is Map ? classifyAlert(alert) : AlertCategory.warning;
 
   Map<String, dynamic>? _liveGlucoseAlert() {
-    final sample = widget.controller.connection.name == 'connected' ? widget.controller.latest : null;
+    final sample = widget.controller.connection.name == 'connected'
+        ? widget.controller.latest
+        : null;
     final raw = sample?.value;
     if (raw == null) return null;
     final mg = raw > 30 ? raw : raw * 18.0182;
@@ -194,31 +213,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
     if (!low && !high) return null;
     return {
       'id': 'glucose:live',
-      'title': low ? 'Critical urgent low glucose' : 'Critical urgent high glucose',
+      'title': low
+          ? 'Critical urgent low glucose'
+          : 'Critical urgent high glucose',
       'message': '${mg.round()} mg/dL is outside your urgent range.',
       'severity': 'critical',
       'timestamp': (sample!.measuredAt).toIso8601String(),
       'isRead': false,
     };
-  }
-
-  bool _isGlucoseUrgent(dynamic rawAlert) {
-    if (rawAlert is! Map) return false;
-    final alert = Map<String, dynamic>.from(rawAlert);
-    final text = '${alert['title'] ?? alert['Title'] ?? ''} ${alert['message'] ?? alert['Message'] ?? ''} ${alert['alertType'] ?? alert['AlertType'] ?? ''}'.toLowerCase();
-    return text.contains('urgent low') ||
-        text.contains('urgent high') ||
-        text.contains('critical low') ||
-        text.contains('critical high') ||
-        text.contains('urgentlow') ||
-        text.contains('urgenthigh');
-  }
-
-  bool _isReminder(dynamic rawAlert) {
-    if (rawAlert is! Map) return false;
-    final alert = Map<String, dynamic>.from(rawAlert);
-    final text = '${alert['title'] ?? alert['Title'] ?? ''} ${alert['message'] ?? alert['Message'] ?? ''}'.toLowerCase();
-    return text.contains('meal') || text.contains('water') || text.contains('reminder');
   }
 
   @override
@@ -229,241 +231,318 @@ class _AlertsScreenState extends State<AlertsScreen> {
         listenable: widget.controller,
         builder: (context, _) {
           final live = _liveGlucoseAlert();
-          final alreadyListed = live != null && widget.controller.alerts.any((a) => '${a['title'] ?? a['Title']}' == live['title']);
-          final alerts = [
-            if (live != null && !alreadyListed && selectedFilter != 'Warning') live,
-            ...widget.controller.alerts,
-          ].where((a) {
-            final critical = _isCritical(a);
-            final glucose = _isGlucoseUrgent(a);
-            if (selectedFilter == 'Critical') return critical || glucose;
-            if (selectedFilter == 'Warning') return !critical && !glucose;
-            return true;
-          }).toList()
-            ..sort((a, b) {
-              final urgentA = _isCritical(a);
-              final urgentB = _isCritical(b);
-              if (urgentA != urgentB) return urgentA ? -1 : 1;
-              if (_isReminder(a) != _isReminder(b)) return _isReminder(a) ? 1 : -1;
-              return 0;
-            });
+          final alreadyListed =
+              live != null &&
+              widget.controller.alerts.any(
+                (a) => '${a['title'] ?? a['Title']}' == live['title'],
+              );
+          final alerts =
+              [
+                  if (live != null &&
+                      !alreadyListed &&
+                      selectedFilter != 'Warning')
+                    live,
+                  ...widget.controller.alerts,
+                ].where((a) {
+                  final category = _category(a);
+                  if (selectedFilter == 'Critical') {
+                    return category == AlertCategory.critical;
+                  }
+                  if (selectedFilter == 'Warning') {
+                    return category == AlertCategory.warning;
+                  }
+                  return true;
+                }).toList()
+                ..sort((a, b) {
+                  final criticalA = _category(a) == AlertCategory.critical;
+                  final criticalB = _category(b) == AlertCategory.critical;
+                  if (criticalA != criticalB) return criticalA ? -1 : 1;
+                  final timeA =
+                      DateTime.tryParse(
+                        '${a['timestamp'] ?? a['AlertTime'] ?? ''}',
+                      ) ??
+                      DateTime(0);
+                  final timeB =
+                      DateTime.tryParse(
+                        '${b['timestamp'] ?? b['AlertTime'] ?? ''}',
+                      ) ??
+                      DateTime(0);
+                  return timeB.compareTo(timeA);
+                });
           return SafeArea(
             child: RefreshIndicator(
               color: AppTheme.primaryPurple,
-              onRefresh: widget.controller.loadAlerts,
+              onRefresh: () =>
+                  widget.controller.loadAlerts(pageSize: _pageSize),
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                scrollCacheExtent: ScrollCacheExtent.pixels(
+                  UiPerf.listCacheExtent(context),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 children: [
                   PageTopBar(
                     title: 'Notifications',
                     subtitle: 'Glucose, sensor, and reminder alerts',
                     trailing: PopupMenuButton<String>(
                       padding: EdgeInsets.zero,
-                      icon: const Icon(Icons.more_vert, color: AppColors.primary, size: 20),
+                      icon: const Icon(
+                        Icons.more_vert,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
                       style: IconButton.styleFrom(
                         backgroundColor: AppColors.primarySoft,
                         fixedSize: const Size(38, 38),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       onSelected: (value) {
                         if (value == 'settings') _openSettings();
                         if (value == 'remove') _clearHistory();
                       },
                       itemBuilder: (context) => const [
-                        PopupMenuItem(value: 'settings', child: Text('Settings')),
-                        PopupMenuItem(value: 'remove', child: Text('Remove notifications')),
+                        PopupMenuItem(
+                          value: 'settings',
+                          child: Text('Settings'),
+                        ),
+                        PopupMenuItem(
+                          value: 'remove',
+                          child: Text('Remove notifications'),
+                        ),
                       ],
                     ),
                   ),
-              const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-              Row(
-                children: ['All', 'Critical', 'Warning'].map((f) {
-                  final isSelected = selectedFilter == f;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => selectedFilter = f);
-                        final severity = switch (f) {
-                          'Critical' => 'Critical',
-                          'Warning' => 'Warning',
-                          _ => null,
-                        };
-                        unawaited(
-                          widget.controller.loadAlerts(severity: severity),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppTheme.primaryPurple
-                              : AppColors.surface,
-                          borderRadius: AppRadii.r20,
-                          border: Border.all(
-                            color: isSelected
-                                ? AppTheme.primaryPurple
-                                : AppPalette.hexFFE5DCF4,
-                            width: 1.2,
+                  Row(
+                    children: ['All', 'Critical', 'Warning'].map((f) {
+                      final isSelected = selectedFilter == f;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => selectedFilter = f);
+                            unawaited(
+                              widget.controller.loadAlerts(
+                                page: 1,
+                                pageSize: _pageSize,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppTheme.primaryPurple
+                                  : AppColors.surface,
+                              borderRadius: AppRadii.r20,
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.primaryPurple
+                                    : AppPalette.hexFFE5DCF4,
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Text(
+                              f,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected
+                                    ? AppColors.surface
+                                    : AppTheme.darkPurple,
+                              ),
+                            ),
                           ),
                         ),
-                        child: Text(
-                          f,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected
-                                ? AppColors.surface
-                                : AppTheme.darkPurple,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 20),
-
-              if (alerts.isEmpty)
-                SizedBox(
-                  height: MediaQuery.sizeOf(context).height * 0.55,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.notifications_none_rounded, size: 92, color: AppColors.textDisabled),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Your notifications live here',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.darkPurple),
-                      ),
-                      const SizedBox(height: 8),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 28),
-                        child: Text(
-                          'Glucose, sensor, and reminder alerts will show up in this list.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 14, height: 1.35, color: AppTheme.textMuted),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      FilledButton(
-                        onPressed: _openSettings,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: const StadiumBorder(),
-                          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                        ),
-                        child: const Text('Notification settings'),
-                      ),
-                    ],
+                      );
+                    }).toList(),
                   ),
-                )
-              else
-                ...alerts.map((a) {
-                  final isCritical = _isCritical(a);
-                  final title =
-                      a['title'] ?? a['Title'] ?? 'Glucose Notification';
-                  final msg =
-                      a['message'] ??
-                      a['Message'] ??
-                      'Reading in target corridor.';
-                  final isRead = a['isRead'] == 1 || a['isRead'] == true;
-                  final timeRaw =
-                      a['timestamp'] ??
-                      a['AlertTime'] ??
-                      DateTime.now().toIso8601String();
-                  final timeStr = DateFormat('h:mm a MMM d')
-                      .format(
+                  const SizedBox(height: 20),
+
+                  if (alerts.isEmpty)
+                    SizedBox(
+                      height: MediaQuery.sizeOf(context).height * 0.55,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_none_rounded,
+                            size: 92,
+                            color: AppColors.textDisabled,
+                          ),
+                          const SizedBox(height: 18),
+                          const Text(
+                            'Your notifications live here',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.darkPurple,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 28),
+                            child: Text(
+                              'Glucose, sensor, and reminder alerts will show up in this list.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.35,
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          FilledButton(
+                            onPressed: _openSettings,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 22,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: const Text('Notification settings'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...alerts.map((a) {
+                      final isCritical = _category(a) == AlertCategory.critical;
+                      final title =
+                          a['title'] ?? a['Title'] ?? 'Glucose Notification';
+                      final msg =
+                          a['message'] ??
+                          a['Message'] ??
+                          'Reading in target corridor.';
+                      final isRead = a['isRead'] == 1 || a['isRead'] == true;
+                      final timeRaw =
+                          a['timestamp'] ??
+                          a['AlertTime'] ??
+                          DateTime.now().toIso8601String();
+                      final timeStr = DateFormat('h:mm a MMM d').format(
                         DateTime.tryParse(timeRaw.toString()) ?? DateTime.now(),
                       );
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: AppInsets.all16,
-                    decoration: BoxDecoration(
-                      color: isRead
-                          ? AppColors.surface
-                          : AppPalette.hexFFFAF8FE,
-                      borderRadius: AppRadii.r18,
-                      border: Border.all(
-                        color: isRead
-                            ? AppPalette.hexFFEFEBF6
-                            : AppTheme.purpleBorder,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: AppInsets.all10,
-                          decoration: BoxDecoration(
-                            color: isCritical
-                                ? AppTheme.dangerBg
-                                : AppTheme.lightPurpleBg,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            isCritical
-                                ? Icons.warning_amber_rounded
-                                : Icons.notifications_active_outlined,
-                            color: isCritical
-                                ? AppTheme.dangerRed
-                                : AppTheme.primaryPurple,
-                            size: 20,
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: AppInsets.all16,
+                        decoration: BoxDecoration(
+                          color: isRead
+                              ? AppColors.surface
+                              : AppPalette.hexFFFAF8FE,
+                          borderRadius: AppRadii.r18,
+                          border: Border.all(
+                            color: isRead
+                                ? AppPalette.hexFFEFEBF6
+                                : AppTheme.purpleBorder,
+                            width: 1.2,
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: AppInsets.all10,
+                              decoration: BoxDecoration(
+                                color: isCritical
+                                    ? AppTheme.dangerBg
+                                    : AppTheme.lightPurpleBg,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isCritical
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.notifications_active_outlined,
+                                color: isCritical
+                                    ? AppTheme.dangerRed
+                                    : AppTheme.primaryPurple,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      '$title',
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 14.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppTheme.darkPurple,
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '$title',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppTheme.darkPurple,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        timeStr,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.textMuted,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(height: 4),
                                   Text(
-                                    timeStr,
+                                    '$msg',
+                                    softWrap: true,
                                     style: const TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 13,
                                       color: AppTheme.textMuted,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$msg',
-                                softWrap: true,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppTheme.textMuted,
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  if (widget.controller.alertsHasMore) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton(
+                        onPressed: widget.controller.alertsLoadingMore
+                            ? null
+                            : () => unawaited(
+                                widget.controller.loadAlerts(
+                                  page: widget.controller.alertsPage + 1,
+                                  pageSize: _pageSize,
+                                  append: true,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      ],
+                        child: widget.controller.alertsLoadingMore
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Load more alerts'),
+                      ),
                     ),
-                  );
-                }),
+                  ],
                 ],
               ),
             ),

@@ -11,13 +11,13 @@ class UiPerf {
   }
 
   /// True for compact / low-density phones where chart density should drop.
-  /// Biased toward treating more devices as low-end (safer for jank).
+  /// Biased toward low-end (incl. ~2GB RAM / small screens).
   static bool isLowEndLayout(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    return size.shortestSide < 400 ||
-        size.height < 780 ||
-        dpr <= 2.5;
+    return size.shortestSide < 420 ||
+        size.height < 820 ||
+        dpr <= 2.75;
   }
 
   /// Cap decoded bitmap size for a logical box (device pixels).
@@ -29,7 +29,7 @@ class UiPerf {
   /// Keep chart paths cheap: at most [maxPoints] evenly spaced samples.
   static List<GlucoseSample> downsample(
     List<GlucoseSample> samples, {
-    int maxPoints = 240,
+    int maxPoints = 120,
   }) {
     if (samples.length <= maxPoints) return samples;
     final out = <GlucoseSample>[];
@@ -39,5 +39,15 @@ class UiPerf {
       out.add(samples[index]);
     }
     return out;
+  }
+
+  /// Smaller off-screen list cache = less RAM / less work while scrolling.
+  static double listCacheExtent(BuildContext context) {
+    return isLowEndLayout(context) ? 80 : 160;
+  }
+
+  /// Skip decorative motion on low-end or when OS asks for reduced motion.
+  static bool skipDecorativeMotion(BuildContext context) {
+    return preferReducedMotion(context) || isLowEndLayout(context);
   }
 }

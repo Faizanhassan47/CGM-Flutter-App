@@ -157,6 +157,18 @@ class ApiService {
     }
   }
 
+  /// Fast path for notification actions — tokens only, no profile network call.
+  Future<bool> restoreTokensOnly() async {
+    try {
+      _accessToken = await _storage.read(key: 'aima_access_token');
+      _refreshToken = await _storage.read(key: 'aima_refresh_token');
+      return _accessToken != null && _accessToken!.isNotEmpty;
+    } catch (e) {
+      debugPrint('[API] Failed to restore tokens: $e');
+      return false;
+    }
+  }
+
   Future<bool> _refresh() async {
     if (_refreshToken == null) return false;
     try {
@@ -475,7 +487,7 @@ class ApiService {
     final sensor = await startSensor(
       deviceId: deviceId,
       sensorIdentifier: sensorSerial,
-      warmupMinutes: 5,
+      warmupMinutes: AppConfig.sensorWarmupMinutes,
     );
 
     final sensorId = _int(sensor['id']);
@@ -536,7 +548,7 @@ class ApiService {
   Future<Map<String, dynamic>> startSensor({
     required int deviceId,
     required String sensorIdentifier,
-    int warmupMinutes = 5,
+    int warmupMinutes = AppConfig.sensorWarmupMinutes,
     int lifespanDays = 14,
   }) async {
     final res = await post('api/Sensors/start', {
@@ -595,27 +607,36 @@ class ApiService {
     }
   }
 
-  /// Save single glucose measurement.
+  /// Save / upsert one reading (Home Live path). Uses MeasurementDto field names.
   Future<void> saveMeasurement({
     required int sensorId,
-    required double value,
-    required String trend,
-    required String timestamp,
-    String unit = 'mg/dL',
+    required double glucoseValue,
+    required String measurementTime,
+    int? sequenceNumber,
+    double? we1CurrentNa,
+    double? deviceTemperatureC,
+    int? batteryVoltageMv,
+    String? receivedAt,
+    String? source,
   }) async {
     await post('api/Glucose/measurement', {
       'sensorId': sensorId,
-      'glucoseValue': value,
-      'trend': trend,
-      'unit': unit,
-      'measuredAt': timestamp,
+      'glucoseValue': glucoseValue,
+      'measurementTime': measurementTime,
+      if (sequenceNumber != null) 'sequenceNumber': sequenceNumber,
+      if (we1CurrentNa != null) 'we1CurrentNa': we1CurrentNa,
+      if (deviceTemperatureC != null)
+        'deviceTemperatureC': deviceTemperatureC,
+      if (batteryVoltageMv != null) 'batteryVoltageMv': batteryVoltageMv,
+      if (receivedAt != null) 'receivedAt': receivedAt,
+      if (source != null) 'source': source,
     });
   }
 
   /// Fetch historical glucose readings with server-side pagination + filters.
   Future<Map<String, dynamic>> getGlucoseHistory({
     int page = 1,
-    int pageSize = 300,
+    int pageSize = 100,
     int? limit,
     int? hours,
     int? days,
@@ -624,6 +645,8 @@ class ApiService {
     String? endUtc,
     String? startDate,
     String? endDate,
+    double? minMg,
+    double? maxMg,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -635,6 +658,8 @@ class ApiService {
       if (endUtc != null) 'endUtc': endUtc,
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (minMg != null) 'minMg': minMg,
+      if (maxMg != null) 'maxMg': maxMg,
     };
     final res = await get('api/Glucose/history', query: query);
     if (res is List) {
@@ -693,14 +718,16 @@ class ApiService {
   /// Fetch alerts with optional filters + pagination.
   Future<Map<String, dynamic>> getAlertsPage({
     String? severity,
+    String? alertType,
     bool? unreadOnly,
     int page = 1,
-    int pageSize = 30,
+    int pageSize = 25,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'pageSize': pageSize,
       if (severity != null) 'severity': severity,
+      if (alertType != null) 'alertType': alertType,
       if (unreadOnly != null) 'unreadOnly': unreadOnly.toString(),
     };
     final res = await get('api/Alerts', query: query);
@@ -720,12 +747,14 @@ class ApiService {
   /// Compatibility helper — returns items only.
   Future<List<dynamic>> getAlerts({
     String? severity,
+    String? alertType,
     bool? unreadOnly,
     int page = 1,
-    int pageSize = 30,
+    int pageSize = 25,
   }) async {
     final pageData = await getAlertsPage(
       severity: severity,
+      alertType: alertType,
       unreadOnly: unreadOnly,
       page: page,
       pageSize: pageSize,
@@ -1028,19 +1057,22 @@ class ApiService {
       _map(await get('api/wellness/meal-glucose/$id'));
   Future<Map<String, dynamic>> createWater(Map<String, dynamic> water) async =>
       _map(await post('api/wellness/water', water));
-  Future<List<dynamic>> getWater({String? from, String? to}) async =>
-      (await get(
-            'api/wellness/water',
-            query: {if (from != null) 'from': from, if (to != null) 'to': to},
-          ))
-          as List<dynamic>;
+  Future<List<dynamic>> getWater({String? from, String? to}) async {
+    final data = await get(
+      'api/wellness/water',
+      query: {if (from != null) 'from': from, if (to != null) 'to': to},
+    );
+    return _asList(data);
+  }
+
   Future<void> deleteWater(int id) async => delete('api/wellness/water/$id');
-  Future<List<dynamic>> getActivities({String? from, String? to}) async =>
-      (await get(
-            'api/wellness/activities',
-            query: {if (from != null) 'from': from, if (to != null) 'to': to},
-          ))
-          as List<dynamic>;
+  Future<List<dynamic>> getActivities({String? from, String? to}) async {
+    final data = await get(
+      'api/wellness/activities',
+      query: {if (from != null) 'from': from, if (to != null) 'to': to},
+    );
+    return _asList(data);
+  }
   Future<Map<String, dynamic>> createActivity(
     Map<String, dynamic> activity,
   ) async => _map(await post('api/wellness/activities', activity));
@@ -1074,13 +1106,28 @@ class ApiService {
     }
   }
 
-  static String _message(dynamic data, String fallback) => data is Map
-      ? '${data['message'] ?? data['error'] ?? fallback}'
-      : fallback;
+  static String _message(dynamic data, String fallback) {
+    if (data is! Map) return fallback;
+    final message = data['message'] ?? data['error'] ?? data['title'];
+    if (message is List) {
+      return message.map((e) => '$e').where((e) => e.isNotEmpty).join(' | ');
+    }
+    if (message != null && '$message'.trim().isNotEmpty) return '$message';
+    return fallback;
+  }
 
   static Map<String, dynamic> _map(dynamic value) => value is Map
       ? value.map((k, v) => MapEntry('$k', v))
       : <String, dynamic>{};
+
+  static List<dynamic> _asList(dynamic value) {
+    if (value is List) return value;
+    if (value is Map) {
+      final items = value['items'] ?? value['data'] ?? value['results'];
+      if (items is List) return items;
+    }
+    return const [];
+  }
 
   static int? _int(dynamic value) =>
       value is num ? value.toInt() : int.tryParse('$value');

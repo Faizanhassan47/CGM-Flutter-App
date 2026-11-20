@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:cgm_sdk/cgm_sdk.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/app_theme.dart';
@@ -10,8 +11,17 @@ import '../../state/app_controller.dart';
 import '../../widgets/page_top_bar.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, required this.controller});
+  const HistoryScreen({
+    super.key,
+    required this.controller,
+    this.isActive = true,
+    this.activeTabListenable,
+    this.tabIndex = 1,
+  });
   final AppController controller;
+  final bool isActive;
+  final ValueListenable<int>? activeTabListenable;
+  final int tabIndex;
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -32,29 +42,46 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _hasMore = false;
   String? _loadError;
 
-  static const _pageSize = 250;
+  static const _pageSize = 80;
+  final GlobalKey<_ZoomableTrendChartState> _trendChartKey =
+      GlobalKey<_ZoomableTrendChartState>();
 
   @override
   void initState() {
     super.initState();
     _initWeekForDate(DateTime.now());
     // Live SDK ticks only matter for "Today"; longer ranges stay on server pages.
-    widget.controller.addListener(_onTelemetry);
+    widget.controller.telemetryRevision.addListener(_onTelemetry);
     unawaited(_loadFromServer());
   }
 
   @override
+  void didUpdateWidget(covariant HistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.telemetryRevision.removeListener(_onTelemetry);
+      widget.controller.telemetryRevision.addListener(_onTelemetry);
+    }
+  }
+
+  @override
   void dispose() {
-    widget.controller.removeListener(_onTelemetry);
+    widget.controller.telemetryRevision.removeListener(_onTelemetry);
     _telemetryDebounce?.cancel();
     super.dispose();
   }
 
+  bool get _tabActive {
+    final listenable = widget.activeTabListenable;
+    if (listenable == null) return widget.isActive;
+    return listenable.value == widget.tabIndex;
+  }
+
   void _onTelemetry() {
-    if (selectedFilter != 'Today') return;
+    if (!_tabActive || selectedFilter != 'Today') return;
     _telemetryDebounce?.cancel();
-    _telemetryDebounce = Timer(const Duration(milliseconds: 1600), () {
-      if (mounted) setState(() {});
+    _telemetryDebounce = Timer(const Duration(milliseconds: 1800), () {
+      if (mounted && _tabActive) setState(() {});
     });
   }
 
@@ -135,7 +162,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (append) {
           // Server returns newest-first; keep that order when appending pages.
           final existing = {
-            for (final s in _serverSamples) '${s.wearId}:${s.seq}:${s.measuredAt.millisecondsSinceEpoch}',
+            for (final s in _serverSamples)
+              '${s.wearId}:${s.seq}:${s.measuredAt.millisecondsSinceEpoch}',
           };
           for (final s in mapped) {
             final key =
@@ -174,7 +202,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _weekStartMonday = _weekStartMonday.subtract(const Duration(days: 7));
       selectedDate = _weekStartMonday.add(const Duration(days: 6));
       selectedFilter = 'Today';
+      _showAllReadings = false;
     });
+    _trendChartKey.currentState?.reset(animate: false);
     unawaited(_loadFromServer());
   }
 
@@ -183,7 +213,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _weekStartMonday = _weekStartMonday.add(const Duration(days: 7));
       selectedDate = _weekStartMonday;
       selectedFilter = 'Today';
+      _showAllReadings = false;
     });
+    _trendChartKey.currentState?.reset(animate: false);
     unawaited(_loadFromServer());
   }
 
@@ -211,11 +243,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
         selectedDate = picked;
         selectedFilter = 'Today';
         _initWeekForDate(picked);
+        _showAllReadings = false;
       });
+      _trendChartKey.currentState?.reset(animate: false);
       unawaited(_loadFromServer());
     }
   }
 
+  // ignore: unused_element
   void _onSelectFilter(String filter) {
     setState(() {
       selectedFilter = filter;
@@ -224,6 +259,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _initWeekForDate(selectedDate);
       }
     });
+    _trendChartKey.currentState?.reset(animate: false);
     unawaited(_loadFromServer());
   }
 
@@ -245,7 +281,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       for (var i = widget.controller.history.length - 1; i >= 0; i--) {
         final s = widget.controller.history[i];
         if (s.value == null) continue;
-        if (s.measuredAt.isBefore(rangeStart) || s.measuredAt.isAfter(rangeEnd)) {
+        if (s.measuredAt.isBefore(rangeStart) ||
+            s.measuredAt.isAfter(rangeEnd)) {
           continue;
         }
         final key =
@@ -254,15 +291,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
     }
 
+    // Server pages and the live SDK buffer can arrive in different orders.
+    // Normalize the merged collection before building the list and chart.
+    samplesNewestFirst.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
+
     // Chronological for the chart painter.
     final samplesForView = samplesNewestFirst.reversed.toList();
     final hasRealData = samplesForView.isNotEmpty;
-    final readingsLimit = _showAllReadings ? 40 : 9;
-    final readings = samplesNewestFirst.take(readingsLimit).toList();
+    final readings = _showAllReadings
+        ? samplesNewestFirst
+        : samplesNewestFirst.take(9).toList();
+    // Keep denser points so pinch-zoom stays smooth and detailed.
     final chartSamples = hasRealData
         ? UiPerf.downsample(
             samplesForView,
-            maxPoints: UiPerf.isLowEndLayout(context) ? 100 : 180,
+            maxPoints: UiPerf.isLowEndLayout(context) ? 160 : 360,
           )
         : const <GlucoseSample>[];
 
@@ -270,39 +313,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final avg = summary?['averageGlucose'] is num
         ? (summary!['averageGlucose'] as num).round()
         : (hasRealData
-            ? (samplesForView
-                        .map((r) => (r.value! * 18.0182).round())
-                        .reduce((a, b) => a + b) /
-                    samplesForView.length)
-                .round()
-            : 0);
+              ? (samplesForView
+                            .map((r) => (r.value! * 18.0182).round())
+                            .reduce((a, b) => a + b) /
+                        samplesForView.length)
+                    .round()
+              : 119);
     final highest = summary?['highestGlucose'] is num
         ? (summary!['highestGlucose'] as num).round()
         : (hasRealData
-            ? samplesForView
-                .map((r) => (r.value! * 18.0182).round())
-                .reduce((a, b) => a > b ? a : b)
-            : 119);
+              ? samplesForView
+                    .map((r) => (r.value! * 18.0182).round())
+                    .reduce((a, b) => a > b ? a : b)
+              : 110);
     final lowest = summary?['lowestGlucose'] is num
         ? (summary!['lowestGlucose'] as num).round()
         : (hasRealData
-            ? samplesForView
-                .map((r) => (r.value! * 18.0182).round())
-                .reduce((a, b) => a < b ? a : b)
-            : 110);
+              ? samplesForView
+                    .map((r) => (r.value! * 18.0182).round())
+                    .reduce((a, b) => a < b ? a : b)
+              : 100);
     final tir = summary?['timeInRangePercentage'] is num
         ? (summary!['timeInRangePercentage'] as num).round()
         : (hasRealData
-            ? ((samplesForView
-                            .where((r) {
+              ? ((samplesForView.where((r) {
                               final mg = (r.value! * 18.0182);
                               return mg >= lowTarget && mg <= highTarget;
-                            })
-                            .length /
-                        samplesForView.length) *
-                    100)
-                .round()
-            : 100);
+                            }).length /
+                            samplesForView.length) *
+                        100)
+                    .round()
+              : 0);
 
     DateTime? highAt;
     DateTime? lowAt;
@@ -335,8 +376,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const SizedBox(height: 18),
               _buildWeekSelectorStrip(),
               const SizedBox(height: 18),
-              _buildPeriodFilterPills(),
-              const SizedBox(height: 20),
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 28),
@@ -473,14 +512,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       setState(() {
                         selectedDate = day;
                         selectedFilter = 'Today';
+                        _showAllReadings = false;
                       });
+                      _trendChartKey.currentState?.reset(animate: false);
+                      unawaited(_loadFromServer());
                     },
                     borderRadius: AppRadii.r16,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary : AppColors.primarySoft,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.primarySoft,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: Column(
@@ -552,48 +596,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   // ===========================================================================
-  // 3. Period Filter Pills (Today, 7D, 14D, 30D, 300D)
-  // ===========================================================================
-  Widget _buildPeriodFilterPills() {
-    final filters = ['Today', '7D', '14D', '30D', '300D'];
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: filters.map((filter) {
-          final isSelected = selectedFilter == filter;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              onTap: () => _onSelectFilter(filter),
-              borderRadius: AppRadii.r22,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8.5,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : AppColors.primarySoft,
-                  borderRadius: AppRadii.r22,
-                ),
-                child: Text(
-                  filter,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected ? AppColors.surface : AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  // ===========================================================================
   // 4. Glucose Trend Chart Card
   // ===========================================================================
   Widget _buildGlucoseTrendCard({
@@ -620,15 +622,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text(
-                'Glucose Trend',
-                style: TextStyle(
-                  fontSize: 16.5,
-                  fontWeight: FontWeight.w800,
-                  color: AppPalette.hexFF2E1A47,
+          const Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Glucose Trend',
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppPalette.hexFF2E1A47,
+                  ),
                 ),
               ),
               Text(
@@ -643,78 +646,37 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           const SizedBox(height: 2),
           const Text(
-            'Your glucose readings over selected period',
+            'Pinch to zoom · drag to pan · double-tap to reset',
             style: TextStyle(fontSize: 12, color: AppPalette.hexFF8A7D9D),
           ),
           const SizedBox(height: 16),
-
-          // Custom Painted Trend Chart with Target Corridor
           SizedBox(
-            height: 160,
+            height: 188,
             child: samples.length < 2
                 ? const Center(
                     child: Text(
                       'No readings for this period',
-                      style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   )
-                : RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _HistoryTrendPainter(
-                        samples: samples,
-                        startTime: startTime,
-                        endTime: endTime,
-                        lowTarget: lowTarget,
-                        highTarget: highTarget,
-                      ),
-                      child: const SizedBox.expand(),
-                    ),
+                : _ZoomableTrendChart(
+                    key: _trendChartKey,
+                    samples: samples,
+                    fullStart: startTime,
+                    fullEnd: endTime,
+                    lowTarget: lowTarget,
+                    highTarget: highTarget,
                   ),
-          ),
-          const SizedBox(height: 10),
-
-          // X-Axis Timeline Labels
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text(
-                '12 AM',
-                style: TextStyle(fontSize: 10, color: AppPalette.hexFF8A7D9D),
-              ),
-              Text(
-                '4 AM',
-                style: TextStyle(fontSize: 10, color: AppPalette.hexFF8A7D9D),
-              ),
-              Text(
-                '8 AM',
-                style: TextStyle(fontSize: 10, color: AppPalette.hexFF8A7D9D),
-              ),
-              Text(
-                '12 PM',
-                style: TextStyle(fontSize: 10, color: AppPalette.hexFF8A7D9D),
-              ),
-              Text(
-                '4 PM',
-                style: TextStyle(fontSize: 10, color: AppPalette.hexFF8A7D9D),
-              ),
-              Text(
-                '8 PM',
-                style: TextStyle(fontSize: 10, color: AppPalette.hexFF8A7D9D),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Legend
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-       
           ),
         ],
       ),
     );
   }
 
+  // ignore: unused_element
   Widget _buildLegendBullet(String label, Color color) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -923,15 +885,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 );
               },
             ),
-            if (readings.length > 9) ...[
+            if (_showAllReadings || _hasMore || _serverSamples.length > 9) ...[
               const SizedBox(height: 12),
               Center(
                 child: TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _showAllReadings = !_showAllReadings;
-                    });
-                  },
+                  onPressed: _loadingMore ? null : _toggleAllReadings,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -962,6 +920,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleAllReadings() async {
+    if (_showAllReadings) {
+      setState(() => _showAllReadings = false);
+      return;
+    }
+
+    setState(() => _showAllReadings = true);
+    while (mounted && _hasMore) {
+      final previousPage = _page;
+      await _loadFromServer(append: true);
+      if (_page == previousPage) break;
+    }
   }
 
   void _showReadingDetailDialog(
@@ -1247,6 +1219,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // ===========================================================================
   // Fallbacks
   // ===========================================================================
+  // ignore: unused_element
   List<GlucoseSample> _generateFallbackReadings() {
     final now = DateTime.now();
     final items = <GlucoseSample>[];
@@ -1267,6 +1240,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return items;
   }
 
+  // ignore: unused_element
   List<GlucoseSample> _generateFallbackSamplesForChart() {
     final now = DateTime.now();
     final todayStart = DateTime(
@@ -1295,6 +1269,272 @@ class _HistoryScreenState extends State<HistoryScreen> {
       );
     }
     return items;
+  }
+}
+
+// =============================================================================
+// Smooth pinch-zoom / pan glucose trend
+// =============================================================================
+class _ZoomableTrendChart extends StatefulWidget {
+  const _ZoomableTrendChart({
+    super.key,
+    required this.samples,
+    required this.fullStart,
+    required this.fullEnd,
+    required this.lowTarget,
+    required this.highTarget,
+  });
+
+  final List<GlucoseSample> samples;
+  final DateTime fullStart;
+  final DateTime fullEnd;
+  final double lowTarget;
+  final double highTarget;
+
+  @override
+  State<_ZoomableTrendChart> createState() => _ZoomableTrendChartState();
+}
+
+class _ZoomableTrendChartState extends State<_ZoomableTrendChart>
+    with SingleTickerProviderStateMixin {
+  static const _minScale = 1.0;
+  static const _maxScale = 20.0;
+
+  /// scale, focus (0–1)
+  final ValueNotifier<Offset> _view = ValueNotifier(const Offset(1, 0.5));
+
+  double _gestureBaseScale = 1.0;
+  double _gestureBaseFocus = 0.5;
+  double _gestureAccumPanPx = 0.0;
+  double _gestureStartFocalFrac = 0.5;
+  bool _zoomedChrome = false;
+
+  late final AnimationController _resetCtrl;
+  Animation<Offset>? _resetAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetCtrl =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 280),
+        )..addListener(() {
+          final anim = _resetAnim;
+          if (anim != null) _view.value = anim.value;
+        });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ZoomableTrendChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.fullStart != widget.fullStart ||
+        oldWidget.fullEnd != widget.fullEnd) {
+      reset(animate: false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _resetCtrl.dispose();
+    _view.dispose();
+    super.dispose();
+  }
+
+  void reset({bool animate = true}) {
+    _resetCtrl.stop();
+    if (!animate || (_view.value.dx == 1.0 && _view.value.dy == 0.5)) {
+      _view.value = const Offset(1, 0.5);
+      if (_zoomedChrome) setState(() => _zoomedChrome = false);
+      return;
+    }
+    _resetAnim = Tween<Offset>(
+      begin: _view.value,
+      end: const Offset(1, 0.5),
+    ).animate(CurvedAnimation(parent: _resetCtrl, curve: Curves.easeOutCubic));
+    _resetCtrl.forward(from: 0).whenComplete(() {
+      if (mounted && _zoomedChrome) setState(() => _zoomedChrome = false);
+    });
+  }
+
+  (DateTime, DateTime) _window(double scale, double focus) {
+    final fullMs = math.max(
+      1,
+      widget.fullEnd.difference(widget.fullStart).inMilliseconds,
+    );
+    final visibleMs = math.max(1.0, fullMs / scale);
+    var startMs = focus * fullMs - visibleMs / 2;
+    startMs = startMs.clamp(0.0, fullMs - visibleMs);
+    final viewStart = widget.fullStart.add(
+      Duration(milliseconds: startMs.round()),
+    );
+    final viewEnd = viewStart.add(Duration(milliseconds: visibleMs.round()));
+    return (viewStart, viewEnd);
+  }
+
+  void _onScaleStart(ScaleStartDetails details, double width) {
+    _resetCtrl.stop();
+    _gestureBaseScale = _view.value.dx;
+    _gestureBaseFocus = _view.value.dy;
+    _gestureAccumPanPx = 0.0;
+    _gestureStartFocalFrac = (details.localFocalPoint.dx / width).clamp(
+      0.0,
+      1.0,
+    );
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details, double width) {
+    if (width <= 0) return;
+    final fullMs = math.max(
+      1,
+      widget.fullEnd.difference(widget.fullStart).inMilliseconds,
+    );
+
+    final nextScale = (_gestureBaseScale * details.scale).clamp(
+      _minScale,
+      _maxScale,
+    );
+
+    // Keep the time under the starting focal point stable while pinching.
+    final visibleBefore = fullMs / _gestureBaseScale;
+    var startBefore = _gestureBaseFocus * fullMs - visibleBefore / 2;
+    startBefore = startBefore.clamp(0.0, fullMs - visibleBefore);
+    final focalTimeMs = startBefore + _gestureStartFocalFrac * visibleBefore;
+
+    final visibleAfter = fullMs / nextScale;
+    var nextFocus =
+        (focalTimeMs - (_gestureStartFocalFrac - 0.5) * visibleAfter) / fullMs;
+
+    // Smooth pan: accumulate total drag since gesture start (not per-frame only).
+    _gestureAccumPanPx += details.focalPointDelta.dx;
+    if (nextScale > 1.01) {
+      nextFocus -= (_gestureAccumPanPx / width) / nextScale;
+    }
+
+    // Keep viewport inside full range.
+    final half = (1 / nextScale) / 2;
+    nextFocus = nextFocus.clamp(half, 1.0 - half);
+
+    _view.value = Offset(nextScale, nextFocus);
+
+    final nowZoomed = nextScale > 1.04;
+    if (nowZoomed != _zoomedChrome) {
+      setState(() => _zoomedChrome = nowZoomed);
+    }
+  }
+
+  List<String> _axisLabels(DateTime viewStart, DateTime viewEnd) {
+    final span = viewEnd.difference(viewStart);
+    final format = span.inHours <= 6
+        ? DateFormat('h:mm a')
+        : span.inHours <= 36
+        ? DateFormat('h a')
+        : DateFormat('MMM d');
+    const ticks = 5;
+    final ms = math.max(1, span.inMilliseconds);
+    return List.generate(ticks, (i) {
+      final t = viewStart.add(
+        Duration(milliseconds: (ms * i / (ticks - 1)).round()),
+      );
+      return format.format(t);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        if (_zoomedChrome)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => reset(animate: true),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySoft,
+                      borderRadius: AppRadii.r12,
+                    ),
+                    child: ValueListenableBuilder<Offset>(
+                      valueListenable: _view,
+                      builder: (_, v, __) => Text(
+                        'Reset ${v.dx.toStringAsFixed(1)}x',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onDoubleTap: () => reset(animate: true),
+                onScaleStart: (d) => _onScaleStart(d, constraints.maxWidth),
+                onScaleUpdate: (d) => _onScaleUpdate(d, constraints.maxWidth),
+                child: ValueListenableBuilder<Offset>(
+                  valueListenable: _view,
+                  builder: (context, view, _) {
+                    final window = _window(view.dx, view.dy);
+                    final labels = _axisLabels(window.$1, window.$2);
+                    return Column(
+                      children: [
+                        Expanded(
+                          child: RepaintBoundary(
+                            child: CustomPaint(
+                              painter: _HistoryTrendPainter(
+                                samples: widget.samples,
+                                startTime: window.$1,
+                                endTime: window.$2,
+                                lowTarget: widget.lowTarget,
+                                highTarget: widget.highTarget,
+                              ),
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            for (final label in labels)
+                              Flexible(
+                                child: Text(
+                                  label,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppPalette.hexFF8A7D9D,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -1402,6 +1642,9 @@ class _HistoryTrendPainter extends CustomPainter {
 
     for (final s in samples) {
       if (s.value == null) continue;
+      if (s.measuredAt.isBefore(startTime) || s.measuredAt.isAfter(endTime)) {
+        continue;
+      }
       final ms = s.measuredAt.difference(startTime).inMilliseconds;
       final x = (ms / totalSpanMs).clamp(0.0, 1.0) * w;
       final mg = s.value! * 18.0182;
@@ -1411,11 +1654,7 @@ class _HistoryTrendPainter extends CustomPainter {
 
     if (points.length < 2) {
       if (points.isNotEmpty) {
-        canvas.drawCircle(
-          points.first,
-          5,
-          Paint()..color = AppColors.primary,
-        );
+        canvas.drawCircle(points.first, 5, Paint()..color = AppColors.primary);
       }
       return;
     }
@@ -1424,15 +1663,24 @@ class _HistoryTrendPainter extends CustomPainter {
       ..color = AppColors.primary
       ..strokeWidth = 2.4
       ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true;
 
-    final path = Path();
-    path.moveTo(points.first.dx, points.first.dy);
-    for (int i = 0; i < points.length - 1; i++) {
-      final p0 = points[i];
-      final p1 = points[i + 1];
-      final midX = (p0.dx + p1.dx) / 2;
-      path.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    // Dense zoomed views look smoother with straight segments; sparse
+    // overview still uses soft mid-point curves.
+    if (points.length >= 40) {
+      for (var i = 1; i < points.length; i++) {
+        path.lineTo(points[i].dx, points[i].dy);
+      }
+    } else {
+      for (var i = 0; i < points.length - 1; i++) {
+        final p0 = points[i];
+        final p1 = points[i + 1];
+        final midX = (p0.dx + p1.dx) / 2;
+        path.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
+      }
     }
     canvas.drawPath(path, curvePaint);
 

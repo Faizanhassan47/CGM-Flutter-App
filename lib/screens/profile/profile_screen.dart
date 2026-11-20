@@ -1,4 +1,5 @@
 import 'package:cgm_sdk/cgm_sdk.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,11 +15,42 @@ import '../reports/reports_screen.dart';
 import 'diet_assistant_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key, required this.controller});
+  const ProfileScreen({
+    super.key,
+    required this.controller,
+    this.isActive = true,
+    this.activeTabListenable,
+    this.tabIndex = 3,
+  });
   final AppController controller;
+  final bool isActive;
+  final ValueListenable<int>? activeTabListenable;
+  final int tabIndex;
 
   @override
   Widget build(BuildContext context) {
+    final tabListenable = activeTabListenable;
+    if (tabListenable != null) {
+      return ValueListenableBuilder<int>(
+        valueListenable: tabListenable,
+        builder: (context, active, _) {
+          final tabActive = active == tabIndex;
+          if (!tabActive) return _buildBody(context);
+          return ValueListenableBuilder<int>(
+            valueListenable: controller.telemetryRevision,
+            builder: (context, _, __) => _buildBody(context),
+          );
+        },
+      );
+    }
+    if (!isActive) return _buildBody(context);
+    return ValueListenableBuilder<int>(
+      valueListenable: controller.telemetryRevision,
+      builder: (context, _, __) => _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     final isConnected = controller.connection == CgmConnectionState.connected;
     final statusText = isConnected ? 'Connected' : 'Disconnected';
 
@@ -97,6 +129,7 @@ class ProfileScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: ListView(
+          cacheExtent: 120,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
             // Header

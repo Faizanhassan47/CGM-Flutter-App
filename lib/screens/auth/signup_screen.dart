@@ -114,7 +114,8 @@ class _SignupScreenState extends State<SignupScreen> {
     try {
       final account = await GoogleAuthService.signIn();
       if (account == null) return;
-      final idToken = account.authentication.idToken;
+      final auth = await account.authentication;
+      final idToken = auth.idToken;
       if (idToken == null) {
         setState(() => validationError = 'Could not obtain Google ID token.');
         return;

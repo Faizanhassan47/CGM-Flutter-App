@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cgm_sdk/cgm_sdk.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -18,9 +20,9 @@ import 'widgets/brand_header.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Keep decoded image memory bounded on low-RAM phones.
-  PaintingBinding.instance.imageCache.maximumSize = 40;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 40 << 20;
+  // Keep decoded image memory bounded on ~2GB RAM phones.
+  PaintingBinding.instance.imageCache.maximumSize = 24;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 24 << 20;
   await AppConfig.load();
 
   try {
@@ -91,7 +93,7 @@ class CircleApp extends StatefulWidget {
   State<CircleApp> createState() => _CircleAppState();
 }
 
-class _CircleAppState extends State<CircleApp> {
+class _CircleAppState extends State<CircleApp> with WidgetsBindingObserver {
   late final AppController controller = AppController(ApiService());
   AppUpdatePolicy? updatePolicy;
   bool? _welcomeSeen;
@@ -99,11 +101,23 @@ class _CircleAppState extends State<CircleApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     controller.initialize();
-    _checkUpdates();
+    // Defer store/update check so it does not compete with first Home paint.
+    Future<void>.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) unawaited(_checkUpdates());
+    });
     SharedPreferences.getInstance().then((prefs) {
       if (mounted) setState(() => _welcomeSeen = prefs.getBool('circle_welcome_seen') ?? false);
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Wall-clock warmup + offline upload queue continue while app is closed.
+      unawaited(controller.onAppResumed());
+    }
   }
 
   Future<void> _finishWelcome() async {
@@ -194,6 +208,7 @@ class _CircleAppState extends State<CircleApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     controller.dispose();
     CgmSdk.dispose();
     super.dispose();

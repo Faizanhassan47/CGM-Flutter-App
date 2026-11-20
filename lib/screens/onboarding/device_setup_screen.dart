@@ -914,6 +914,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
   }
 
   Widget _buildStepThree() {
+    final warming = widget.controller.isSensorWarming;
     return Column(
       children: [
         const SizedBox(height: 40),
@@ -940,15 +941,46 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
           ),
         ),
         const SizedBox(height: 10),
-        const Text(
-          'Your continuous glucose monitor is linked and telemetry streaming is ready.',
+        Text(
+          warming
+              ? 'New hardware detected. Device is warming up for about 2 hours before live glucose is shown.'
+              : 'This sensor was already on your account. Live glucose is ready — no warmup needed.',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 14,
             color: AppTheme.textMuted,
             height: 1.4,
           ),
         ),
+        if (warming) ...[
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: AppRadii.r16,
+              border: Border.all(color: AppTheme.purpleBorder),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.device_thermostat_rounded, color: AppColors.primary, size: 22),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Keep the sensor on your body during warmup.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.darkPurple,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 36),
         PillButton(
           text: 'Go to Dashboard',

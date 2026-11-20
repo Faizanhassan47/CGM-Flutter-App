@@ -32,24 +32,27 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
   final GlobalKey _navKey = GlobalKey();
   late final AnimationController _pillController;
   late final List<double> _pillWidths;
+  /// Active tab index — tabs listen here so scrubbing the pill does not rebuild bodies.
+  final ValueNotifier<int> _activeTab = ValueNotifier(0);
 
   int _selected = 0;
+  int _previewIndex = 0;
   int _lastHaptic = 0;
-  double _pillPage = 0;
   bool _scrubbing = false;
+  final Set<int> _mountedTabs = {0};
+  final Map<int, Widget> _tabCache = {};
 
   @override
   void initState() {
     super.initState();
     _pillWidths = [for (final tab in _tabs) _widthForLabel(tab.label)];
-    // Do not setState on every tick — that rebuilt IndexedStack (all tabs).
-    // Pill motion is driven by AnimatedBuilder below.
     _pillController = AnimationController.unbounded(vsync: this, value: 0);
   }
 
   @override
   void dispose() {
     _pillController.dispose();
+    _activeTab.dispose();
     super.dispose();
   }
 
@@ -64,24 +67,25 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
 
   void _selectTab(int index, {bool animate = true}) {
     final target = index.clamp(0, _tabs.length - 1);
-    if (_selected != target) {
-      setState(() => _selected = target);
+    final tabChanged = _selected != target;
+    if (tabChanged) {
+      _mountedTabs.add(target);
+      _selected = target;
+      _previewIndex = target;
+      _activeTab.value = target;
+      // Only rebuild body when the committed tab changes — never during scrub.
+      setState(() {});
       HapticFeedback.selectionClick();
       _lastHaptic = target;
     }
     if (animate) {
-      _pillController
-          .animateTo(
-            target.toDouble(),
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-          )
-          .whenComplete(() {
-            if (mounted) setState(() => _pillPage = target.toDouble());
-          });
+      _pillController.animateTo(
+        target.toDouble(),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
     } else {
       _pillController.value = target.toDouble();
-      _pillPage = target.toDouble();
     }
   }
 
@@ -93,19 +97,16 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
     _selectTab(page);
   }
 
+  /// Scrub only moves the pill via the animation controller — no setState / no tab rebuild.
   void _scrubTo(Offset globalPosition) {
     final box = _navKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     final x = box.globalToLocal(globalPosition).dx.clamp(0.0, box.size.width);
     final page = (x / box.size.width) * (_tabs.length - 1);
+    _scrubbing = true;
+    _pillController.value = page;
     final nearest = page.round().clamp(0, _tabs.length - 1);
-    setState(() {
-      _scrubbing = true;
-      _pillPage = page;
-      if (_selected != nearest) {
-        _selected = nearest;
-      }
-    });
+    _previewIndex = nearest;
     if (nearest != _lastHaptic) {
       _lastHaptic = nearest;
       HapticFeedback.selectionClick();
@@ -113,25 +114,26 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
   }
 
   void _endScrub() {
+    if (!_scrubbing) return;
     _scrubbing = false;
-    _selectTab(_selected, animate: true);
+    _selectTab(_previewIndex, animate: true);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      // Build only the active tab. IndexedStack kept all 4 trees (and their
-      // ListenableBuilders / chart painters) alive and janking on low-end.
-      body: switch (_selected) {
+  Widget _cachedTab(int index) {
+    return _tabCache.putIfAbsent(index, () {
+      return switch (index) {
         0 => HomeScreen(
             key: const ValueKey('tab-home'),
             controller: widget.controller,
             onSwitchTab: _onSwitchTab,
+            activeTabListenable: _activeTab,
+            tabIndex: 0,
           ),
         1 => HistoryScreen(
             key: const ValueKey('tab-history'),
             controller: widget.controller,
+            activeTabListenable: _activeTab,
+            tabIndex: 1,
           ),
         2 => DailyActivitiesScreen(
             key: const ValueKey('tab-activities'),
@@ -140,116 +142,146 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
         _ => ProfileScreen(
             key: const ValueKey('tab-profile'),
             controller: widget.controller,
+            activeTabListenable: _activeTab,
+            tabIndex: 3,
           ),
-      },
+      };
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: RepaintBoundary(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            for (final index in _mountedTabs)
+              Offstage(
+                offstage: _selected != index,
+                child: TickerMode(
+                  enabled: _selected == index,
+                  child: RepaintBoundary(child: _cachedTab(index)),
+                ),
+              ),
+          ],
+        ),
+      ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
         child: SafeArea(
           top: false,
-          child: Container(
-            key: _navKey,
-            height: 62,
-            padding: const EdgeInsets.all(5),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(31),
-              border: Border.all(color: AppColors.surfaceBorder),
-              boxShadow: const [
-                BoxShadow(color: Color(0x14000000), blurRadius: 22, offset: Offset(0, 8)),
-              ],
-            ),
-            child: AnimatedBuilder(
-              animation: _pillController,
-              builder: (context, _) {
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final slot = constraints.maxWidth / _tabs.length;
-                    final page = (_scrubbing ? _pillPage : _pillController.value)
-                        .clamp(0.0, (_tabs.length - 1).toDouble());
-                    final lower = page.floor().clamp(0, _tabs.length - 1);
-                    final upper = page.ceil().clamp(0, _tabs.length - 1);
-                    final t = lower == upper ? 0.0 : page - lower;
-                    final width =
-                        _pillWidths[lower] * (1 - t) + _pillWidths[upper] * t;
-                    final center = (lower + t) * slot + slot / 2;
-                    final left = (center - width / 2)
-                        .clamp(0.0, constraints.maxWidth - width);
-                    final labelIndex = page.round().clamp(0, _tabs.length - 1);
-                    final labelOpacity =
-                        (1 - (page - labelIndex).abs() * 2).clamp(0.0, 1.0);
+          child: RepaintBoundary(
+            child: Container(
+              key: _navKey,
+              height: 62,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(31),
+                border: Border.all(color: AppColors.surfaceBorder),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 22,
+                    offset: Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: AnimatedBuilder(
+                animation: _pillController,
+                builder: (context, _) {
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final slot = constraints.maxWidth / _tabs.length;
+                      final page = _pillController.value
+                          .clamp(0.0, (_tabs.length - 1).toDouble());
+                      final lower = page.floor().clamp(0, _tabs.length - 1);
+                      final upper = page.ceil().clamp(0, _tabs.length - 1);
+                      final t = lower == upper ? 0.0 : page - lower;
+                      final width =
+                          _pillWidths[lower] * (1 - t) + _pillWidths[upper] * t;
+                      final center = (lower + t) * slot + slot / 2;
+                      final left = (center - width / 2)
+                          .clamp(0.0, constraints.maxWidth - width);
+                      final labelIndex =
+                          page.round().clamp(0, _tabs.length - 1);
+                      final labelOpacity =
+                          (1 - (page - labelIndex).abs() * 2).clamp(0.0, 1.0);
 
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapDown: (details) {
-                        final index =
-                            (details.localPosition.dx /
-                                    constraints.maxWidth *
-                                    _tabs.length)
-                                .floor()
-                                .clamp(0, _tabs.length - 1);
-                        _selectTab(index);
-                      },
-                      onHorizontalDragStart: (details) =>
-                          _scrubTo(details.globalPosition),
-                      onHorizontalDragUpdate: (details) =>
-                          _scrubTo(details.globalPosition),
-                      onHorizontalDragEnd: (_) => _endScrub(),
-                      onHorizontalDragCancel: _endScrub,
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            left: left,
-                            top: 0,
-                            bottom: 0,
-                            width: width,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(26),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _tabs[labelIndex].activeIcon,
-                                    size: 22,
-                                    color: Colors.white,
-                                  ),
-                                  SizedBox(width: 8 * labelOpacity),
-                                  Opacity(
-                                    opacity: labelOpacity,
-                                    child: Text(
-                                      _tabs[labelIndex].label,
-                                      style: _labelStyle,
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapDown: (details) {
+                          final index = (details.localPosition.dx /
+                                  constraints.maxWidth *
+                                  _tabs.length)
+                              .floor()
+                              .clamp(0, _tabs.length - 1);
+                          _selectTab(index);
+                        },
+                        onHorizontalDragStart: (details) =>
+                            _scrubTo(details.globalPosition),
+                        onHorizontalDragUpdate: (details) =>
+                            _scrubTo(details.globalPosition),
+                        onHorizontalDragEnd: (_) => _endScrub(),
+                        onHorizontalDragCancel: _endScrub,
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              left: left,
+                              top: 0,
+                              bottom: 0,
+                              width: width,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(26),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      _tabs[labelIndex].activeIcon,
+                                      size: 22,
+                                      color: Colors.white,
                                     ),
-                                  ),
-                                ],
+                                    SizedBox(width: 8 * labelOpacity),
+                                    Opacity(
+                                      opacity: labelOpacity,
+                                      child: Text(
+                                        _tabs[labelIndex].label,
+                                        style: _labelStyle,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          Row(
-                            children: [
-                              for (var i = 0; i < _tabs.length; i++)
-                                Expanded(
-                                  child: Center(
-                                    child: Opacity(
-                                      opacity: labelIndex == i ? 0 : 1,
-                                      child: Icon(
-                                        _tabs[i].icon,
-                                        size: 22,
-                                        color: AppColors.textSecondary,
+                            Row(
+                              children: [
+                                for (var i = 0; i < _tabs.length; i++)
+                                  Expanded(
+                                    child: Center(
+                                      child: Opacity(
+                                        opacity: labelIndex == i ? 0 : 1,
+                                        child: Icon(
+                                          _tabs[i].icon,
+                                          size: 22,
+                                          color: AppColors.textSecondary,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ),
         ),

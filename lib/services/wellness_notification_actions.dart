@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
@@ -6,6 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../core/app_config.dart';
 import 'api_service.dart';
 import 'wellness_offline_store.dart';
+import 'wellness_reminder_log.dart';
 
 const int wellnessQuickWaterMl = 250;
 const int wellnessLargeWaterMl = 500;
@@ -23,7 +26,10 @@ int? parseWaterAmount(String? raw) {
 String mealTypeFromPayload(String? payload) {
   final parts = (payload ?? '').split(':');
   final type = parts.length >= 3 ? parts[2].toLowerCase() : '';
-  if (type == 'breakfast' || type == 'lunch' || type == 'dinner' || type == 'snack') {
+  if (type == 'breakfast' ||
+      type == 'lunch' ||
+      type == 'dinner' ||
+      type == 'snack') {
     return type;
   }
   return 'snack';
@@ -58,9 +64,31 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
     );
   }
 
+  // Tapping the notification body also opens / logs presence in Alerts.
+  final payload = response.payload ?? '';
+  if (action.isEmpty && payload.startsWith('wellness:water')) {
+    await WellnessReminderLog.add(
+      id: 'water:tap:$id:${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Hydration reminder',
+      message: 'Time to drink water. How much water did you drink?',
+      at: DateTime.now(),
+    );
+    return;
+  }
+  if (action.isEmpty && payload.startsWith('wellness:meal')) {
+    await WellnessReminderLog.add(
+      id: 'meal:tap:$id:${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Meal reminder',
+      message: 'Have you eaten? Log your meal in Circle.',
+      at: DateTime.now(),
+    );
+    return;
+  }
+
   if (action == 'meal_later') {
     tzdata.initializeTimeZones();
-    final when = tz.TZDateTime.now(tz.local).add(const Duration(minutes: wellnessSnoozeMinutes));
+    final when = tz.TZDateTime.now(tz.local)
+        .add(const Duration(minutes: wellnessSnoozeMinutes));
     await plugin.zonedSchedule(
       id: 201000 + (id % 500),
       title: 'Meal reminder',
@@ -94,27 +122,73 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
   }
   if (amount == null && mealText == null) return;
 
+  // Instant UX: confirm first, then persist (offline-first + best-effort sync).
+  if (amount != null) {
+    await confirm('$amount ml added to today\'s hydration log.');
+    await WellnessReminderLog.add(
+      id: 'water:logged:$id:${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Water logged',
+      message: '$amount ml added from hydration reminder.',
+      at: DateTime.now(),
+    );
+  } else {
+    await confirm('Meal saved.');
+    await WellnessReminderLog.add(
+      id: 'meal:logged:$id:${DateTime.now().millisecondsSinceEpoch}',
+      title: 'Meal logged',
+      message: mealText ?? 'Meal saved from reminder.',
+      at: DateTime.now(),
+    );
+  }
+
   try {
     await AppConfig.load();
     final api = ApiService();
-    final signedIn = await api.restoreSession();
+    // Skip profile network call — that was causing 1–2 min waits on cold hosts.
+    final signedIn = await api.restoreTokensOnly();
     if (!signedIn) {
-      await confirm('Sign in to Circle to save this entry.');
+      // Already confirmed to user; queue offline for later sync after sign-in.
+      final when = DateTime.now().toUtc().toIso8601String();
+      if (amount != null) {
+        await WellnessOfflineStore.add({
+          'kind': 'water',
+          'data': {
+            'amountMl': amount,
+            'occurredAtUtc': when,
+            'clientEventId':
+                'ntf-$id-water-$amount-${DateTime.now().millisecondsSinceEpoch}',
+          },
+        });
+      } else {
+        await WellnessOfflineStore.add({
+          'kind': 'meal',
+          'data': {
+            'mealType': mealTypeFromPayload(response.payload),
+            'foodDescription': mealText,
+            'occurredAtUtc': when,
+            'clientEventId': 'ntf-$id-meal-${mealText.hashCode}',
+          },
+        });
+      }
       return;
     }
+
     final when = DateTime.now().toUtc().toIso8601String();
     if (amount != null) {
       final event = {
         'amountMl': amount,
         'occurredAtUtc': when,
-        'clientEventId': 'ntf-$id-water-$amount',
+        'clientEventId':
+            'ntf-$id-water-$amount-${DateTime.now().millisecondsSinceEpoch}',
       };
       try {
-        await api.createWater(event);
-        await confirm('$amount ml added to today\'s hydration log.');
+        await api
+            .createWater(event)
+            .timeout(const Duration(seconds: 8));
+      } on TimeoutException {
+        await WellnessOfflineStore.add({'kind': 'water', 'data': event});
       } catch (_) {
         await WellnessOfflineStore.add({'kind': 'water', 'data': event});
-        await confirm('$amount ml saved offline. Will sync when connected.');
       }
     } else {
       final event = {
@@ -124,15 +198,15 @@ Future<void> wellnessNotificationAction(NotificationResponse response) async {
         'clientEventId': 'ntf-$id-meal-${mealText.hashCode}',
       };
       try {
-        await api.createMeal(event);
-        await confirm('Meal saved.');
+        await api.createMeal(event).timeout(const Duration(seconds: 8));
+      } on TimeoutException {
+        await WellnessOfflineStore.add({'kind': 'meal', 'data': event});
       } catch (_) {
         await WellnessOfflineStore.add({'kind': 'meal', 'data': event});
-        await confirm('Meal saved offline. Will sync when connected.');
       }
     }
   } catch (_) {
-    await confirm('Unable to save. Open Circle to retry.');
+    // User already got instant confirm; keep offline queue if possible.
   }
 }
 
@@ -146,8 +220,16 @@ NotificationDetails waterNotificationDetails() {
       priority: Priority.high,
       visibility: NotificationVisibility.public,
       actions: [
-        AndroidNotificationAction('water_250', '+250 ml', cancelNotification: false),
-        AndroidNotificationAction('water_500', '+500 ml', cancelNotification: false),
+        AndroidNotificationAction(
+          'water_250',
+          '+250 ml',
+          cancelNotification: false,
+        ),
+        AndroidNotificationAction(
+          'water_500',
+          '+500 ml',
+          cancelNotification: false,
+        ),
         AndroidNotificationAction(
           'water_custom',
           'Enter amount',
@@ -173,9 +255,15 @@ NotificationDetails mealNotificationDetails() {
           'meal_log',
           'Log meal',
           cancelNotification: false,
-          inputs: [AndroidNotificationActionInput(label: 'What did you eat?')],
+          inputs: [
+            AndroidNotificationActionInput(label: 'What did you eat?'),
+          ],
         ),
-        AndroidNotificationAction('meal_later', 'Remind later', cancelNotification: true),
+        AndroidNotificationAction(
+          'meal_later',
+          'Remind later',
+          cancelNotification: true,
+        ),
       ],
     ),
   );

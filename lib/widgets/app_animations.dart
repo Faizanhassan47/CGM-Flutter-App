@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/app_theme.dart';
+import '../core/ui_perf.dart';
 
 /// Smooth, enterprise-grade page route transition with subtle slide & fade.
 class SmoothPageRoute<T> extends PageRouteBuilder<T> {
@@ -69,7 +70,18 @@ class _ShimmerBoxState extends State<ShimmerBox>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (UiPerf.skipDecorativeMotion(context)) {
+      _controller.stop();
+      _controller.value = 0.5;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -80,6 +92,16 @@ class _ShimmerBoxState extends State<ShimmerBox>
 
   @override
   Widget build(BuildContext context) {
+    if (UiPerf.skipDecorativeMotion(context)) {
+      return Container(
+        width: widget.width,
+        height: widget.height,
+        decoration: BoxDecoration(
+          borderRadius: widget.borderRadius,
+          color: const Color(0xFFF1EEF6),
+        ),
+      );
+    }
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -166,6 +188,9 @@ class _FadeSlideEntranceState extends State<FadeSlideEntrance>
 
   @override
   Widget build(BuildContext context) {
+    if (UiPerf.skipDecorativeMotion(context)) {
+      return widget.child;
+    }
     return SlideTransition(
       position: _slide,
       child: FadeTransition(
@@ -201,7 +226,18 @@ class _SubtlePulseIndicatorState extends State<SubtlePulseIndicator>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (UiPerf.skipDecorativeMotion(context)) {
+      _controller.stop();
+      _controller.value = 1;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
@@ -212,7 +248,7 @@ class _SubtlePulseIndicatorState extends State<SubtlePulseIndicator>
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.disableAnimationsOf(context)) {
+    if (UiPerf.skipDecorativeMotion(context)) {
       return Container(
         width: widget.size,
         height: widget.size,

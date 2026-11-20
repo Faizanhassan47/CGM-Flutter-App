@@ -1,35 +1,28 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import '../core/app_config.dart';
 
-/// Google Sign-In v7+ wrapper (singleton + authenticate).
+/// Google Sign-In for google_sign_in 6.x (`signIn` + `authentication`).
 class GoogleAuthService {
   GoogleAuthService._();
 
-  static bool _initialized = false;
+  static GoogleSignIn? _client;
 
-  static Future<void> _ensureInitialized() async {
-    if (_initialized) return;
+  static GoogleSignIn _clientOrThrow() {
     final serverClientId = AppConfig.googleServerClientId;
     if (serverClientId.isEmpty) {
       throw StateError(
         'GOOGLE_SERVER_CLIENT_ID is not configured. Call AppConfig.load() first.',
       );
     }
-    await GoogleSignIn.instance.initialize(serverClientId: serverClientId);
-    _initialized = true;
+    return _client ??= GoogleSignIn(
+      serverClientId: serverClientId,
+      scopes: const ['email', 'profile'],
+    );
   }
 
   /// Returns null when the user cancels.
   static Future<GoogleSignInAccount?> signIn() async {
-    await _ensureInitialized();
-    if (!GoogleSignIn.instance.supportsAuthenticate()) {
-      throw StateError('Google sign-in is not supported on this platform.');
-    }
-    try {
-      return await GoogleSignIn.instance.authenticate();
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) return null;
-      rethrow;
-    }
+    final client = _clientOrThrow();
+    return client.signIn();
   }
 }

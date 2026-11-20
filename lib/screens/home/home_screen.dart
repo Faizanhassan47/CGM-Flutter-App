@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:cgm_sdk/cgm_sdk.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../alerts/alerts_screen.dart';
 import 'package:intl/intl.dart';
@@ -20,16 +22,89 @@ class HomeScreen extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onSwitchTab,
+    this.isActive = true,
+    this.activeTabListenable,
+    this.tabIndex = 0,
   });
 
   final AppController controller;
   final ValueChanged<int> onSwitchTab;
+  final bool isActive;
+  final ValueListenable<int>? activeTabListenable;
+  final int tabIndex;
 
   String get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good morning,';
     if (hour < 17) return 'Good afternoon,';
     return 'Good evening,';
+  }
+
+  Widget _buildTelemetrySection() {
+    Widget body() {
+      return ValueListenableBuilder<int>(
+        valueListenable: controller.telemetryRevision,
+        builder: (context, _, __) {
+          final isConnected =
+              controller.connection == CgmConnectionState.connected;
+          final heating = controller.isSensorWarming;
+          final warmupEnd = controller.sensorWarmupEndAt;
+          final sample = (isConnected && !heating) ? controller.latest : null;
+          final sampleVal = sample?.value;
+          final double? rawMg = sampleVal != null
+              ? (sampleVal > 30 ? sampleVal : sampleVal * 18.0182)
+              : null;
+          final int? mg = rawMg?.round();
+          final isMmol = controller.preferredGlucoseUnit.toLowerCase().contains(
+            'mmol',
+          );
+          final lowT = controller.targetLow;
+          final highT = controller.targetHigh;
+          final isUrgentLow = mg != null && mg < 55;
+          final inTarget = mg != null && mg >= lowT && mg <= highT;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _graceBanner(),
+              if (heating && warmupEnd != null)
+                _WarmupCountdown(
+                  endAt: warmupEnd,
+                  onFinished: () => unawaited(controller.checkWarmupFinished()),
+                )
+              else ...[
+                _readingCard(
+                  context,
+                  mg: mg,
+                  isConnected: isConnected,
+                  inTarget: inTarget,
+                  isUrgentLow: isUrgentLow,
+                  isHigh: mg != null && mg > highT,
+                  scannedAt: controller.lastReadingDisplayAt,
+                ),
+                const SizedBox(height: 14),
+                _todayChart(context, lowT, highT, isConnected, isMmol),
+                const SizedBox(height: 14),
+                _statGrid(isConnected, lowT, highT),
+              ],
+            ],
+          );
+        },
+      );
+    }
+
+    final tabListenable = activeTabListenable;
+    if (tabListenable == null) {
+      if (!isActive) return const SizedBox(height: 320);
+      return body();
+    }
+    return ValueListenableBuilder<int>(
+      valueListenable: tabListenable,
+      builder: (context, active, _) {
+        if (active != tabIndex) return const SizedBox(height: 320);
+        return body();
+      },
+    );
   }
 
   @override
@@ -47,6 +122,7 @@ class HomeScreen extends StatelessWidget {
             await controller.loadReports();
           },
           child: ListView(
+            cacheExtent: UiPerf.listCacheExtent(context),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
             children: [
               ListenableBuilder(
@@ -84,60 +160,59 @@ class HomeScreen extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 16),
-              ListenableBuilder(
-                listenable: controller,
-                builder: (context, _) {
-                  final isConnected =
-                      controller.connection == CgmConnectionState.connected;
-                  final sample = isConnected ? controller.latest : null;
-                  final sampleVal = sample?.value;
-                  final double? rawMg = sampleVal != null
-                      ? (sampleVal > 30 ? sampleVal : sampleVal * 18.0182)
-                      : null;
-                  final int? mg = rawMg?.round();
-                  final isMmol = controller.preferredGlucoseUnit
-                      .toLowerCase()
-                      .contains('mmol');
-                  final unitStr = isMmol ? 'mmol/L' : 'mg/dL';
-                  final displayGlucose = rawMg != null
-                      ? (isMmol
-                            ? (rawMg / 18.0182).toStringAsFixed(1)
-                            : '${rawMg.round()}')
-                      : '--';
-                  final lowT = controller.targetLow;
-                  final highT = controller.targetHigh;
-                  final isUrgentLow = mg != null && mg < 55;
-                  final inTarget = mg != null && mg >= lowT && mg <= highT;
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _graceBanner(),
-                      _readingCard(
-                        context,
-                        mg: mg,
-                        displayGlucose: displayGlucose,
-                        unitStr: unitStr,
-                        isConnected: isConnected,
-                        inTarget: inTarget,
-                        isUrgentLow: isUrgentLow,
-                        isHigh: mg != null && mg > highT,
-                        scannedAt: sample?.measuredAt,
-                      ),
-                      const SizedBox(height: 14),
-                      _todayChart(context, lowT, highT, isConnected, isMmol),
-                      const SizedBox(height: 14),
-                      _statGrid(isConnected, lowT, highT),
-                    ],
-                  );
-                },
-              ),
+              _buildTelemetrySection(),
               const SizedBox(height: 14),
               _ReminderHomeCards(api: controller.api),
               const SizedBox(height: 24),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _warmupBanner(DateTime warmupEndAt) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: AppRadii.r16,
+        border: Border.all(color: AppTheme.purpleBorder),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.device_thermostat_rounded,
+            color: AppColors.primary,
+            size: 26,
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Device is warming up',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: AppTheme.darkPurple,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Countdown below shows remaining time of the 2-hour calibration.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: AppTheme.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -196,8 +271,6 @@ class HomeScreen extends StatelessWidget {
   Widget _readingCard(
     BuildContext context, {
     required int? mg,
-    required String displayGlucose,
-    required String unitStr,
     required bool isConnected,
     required bool inTarget,
     required bool isUrgentLow,
@@ -213,13 +286,22 @@ class HomeScreen extends StatelessWidget {
         }
       }
     }
-    final wear = controller.wear;
-    final warming = isConnected && wear != null && DateTime.now().isBefore(wear.warmupEndAt);
-    final warmupLeft = warming ? wear.warmupEndAt.difference(DateTime.now()).inMinutes.clamp(1, 999) : 0;
+    final warming = controller.isSensorWarming;
+    final warmupEnd = controller.sensorWarmupEndAt;
+    final warmupLeft = (warming && warmupEnd != null)
+        ? warmupEnd.difference(DateTime.now()).inMinutes.clamp(1, 999)
+        : 0;
+    final warmupLabel = () {
+      if (!warming) return '';
+      final h = warmupLeft ~/ 60;
+      final m = warmupLeft % 60;
+      if (h > 0) return 'Device is warming up · ${h}h ${m}m left';
+      return 'Device is warming up · $warmupLeft min left';
+    }();
     final label = !isConnected
         ? 'No sensor'
         : warming
-        ? 'Warming up'
+        ? 'Device is warming up'
         : mg == null
         ? 'Waiting'
         : isUrgentLow
@@ -229,49 +311,80 @@ class HomeScreen extends StatelessWidget {
         : inTarget
         ? 'In range'
         : 'Below range';
-    final chipColor = isUrgentLow || isHigh || (mg != null && !inTarget)
+    final chipColor = warming
+        ? AppColors.primary
+        : isUrgentLow || isHigh || (mg != null && !inTarget)
         ? AppColors.danger
         : AppColors.success;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Your glucose', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.4)),
+        Text(
+          warming ? 'Sensor warmup' : 'Your glucose',
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.4,
+          ),
+        ),
         const SizedBox(height: 4),
         GestureDetector(
           onTap: !isConnected
               ? () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
-                  )
+                  MaterialPageRoute(
+                    builder: (_) => DeviceSetupScreen(controller: controller),
+                  ),
+                )
               : null,
           child: Text(
-            !isConnected
+            !isConnected && !warming
                 ? (lastSample == null
-                    ? 'Device is not connected'
-                    : 'Device is not connected · last reading ${DateFormat.jm().format(lastSample.measuredAt)}')
+                      ? 'Device is not connected'
+                      : 'Device is not connected · last reading ${DateFormat.jm().format(lastSample.measuredAt)}')
                 : warming
-                ? '$warmupLeft min left in warmup'
+                ? warmupLabel
                 : scannedAt == null
                 ? 'No reading yet'
-                : 'Scanned at ${DateFormat.jm().format(scannedAt)}',
+                : 'Last reading at ${DateFormat.jm().format(scannedAt)}',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 13, color: !isConnected ? AppColors.danger : AppColors.textSecondary, fontWeight: !isConnected ? FontWeight.w700 : FontWeight.w500),
+            style: TextStyle(
+              fontSize: 13,
+              color: !isConnected && !warming
+                  ? AppColors.danger
+                  : warming
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
         if (isConnected && mg != null) ...[
           const SizedBox(height: 6),
-          Text(label, style: TextStyle(color: chipColor, fontWeight: FontWeight.w700, fontSize: 13)),
+          Text(
+            label,
+            style: TextStyle(
+              color: chipColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
         ],
         if (!isConnected && controller.wear == null) ...[
           const SizedBox(height: 12),
           FilledButton(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+              MaterialPageRoute(
+                builder: (_) => DeviceSetupScreen(controller: controller),
+              ),
             ),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,
               minimumSize: const Size.fromHeight(46),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
             ),
             child: const Text('Connect sensor'),
           ),
@@ -280,17 +393,28 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _todayChart(BuildContext context, double lowT, double highT, bool isConnected, bool mmol) {
+  Widget _todayChart(
+    BuildContext context,
+    double lowT,
+    double highT,
+    bool isConnected,
+    bool mmol, {
+    bool warming = false,
+  }) {
     return RepaintBoundary(
       child: _HomeChart(
         samples: controller.history,
+        latest: controller.latest,
         low: lowT,
         high: highT,
         mmol: mmol,
         connected: isConnected,
+        warming: warming,
         api: controller.api,
         onConnect: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => DeviceSetupScreen(controller: controller)),
+          MaterialPageRoute(
+            builder: (_) => DeviceSetupScreen(controller: controller),
+          ),
         ),
       ),
     );
@@ -308,12 +432,19 @@ class HomeScreen extends StatelessWidget {
         values.add(s.value! > 30 ? s.value! : s.value! * 18.0182);
       }
     }
-    final avg = values.isEmpty ? null : (values.reduce((a, b) => a + b) / values.length).round();
+    final avg = values.isEmpty
+        ? null
+        : (values.reduce((a, b) => a + b) / values.length).round();
     final tir = values.isEmpty
         ? null
-        : (values.where((v) => v >= lowT && v <= highT).length / values.length * 100).round();
+        : (values.where((v) => v >= lowT && v <= highT).length /
+                  values.length *
+                  100)
+              .round();
     final mv = controller.deviceStatus?.batteryMv;
-    final battery = mv == null ? null : (((mv - 2600) / 400) * 100).clamp(0, 100).round();
+    final battery = mv == null
+        ? null
+        : (((mv - 2600) / 400) * 100).clamp(0, 100).round();
     final wear = controller.wear;
     String life = '--';
     String lifeNote = '';
@@ -323,10 +454,13 @@ class HomeScreen extends StatelessWidget {
       final days = wear.expiresAt.difference(DateTime.now()).inDays;
       life = days > 0 ? '${days}d' : '0d';
       lifeNote = 'until expiry';
-      if (isConnected && DateTime.now().isBefore(wear.warmupEndAt)) {
-        final mins = wear.warmupEndAt.difference(DateTime.now()).inMinutes.clamp(1, 999);
-        status = 'Warming up';
-        statusNote = '$mins min left';
+      if (isConnected && controller.isSensorWarming) {
+        final end = controller.sensorWarmupEndAt ?? DateTime.now();
+        final mins = end.difference(DateTime.now()).inMinutes.clamp(1, 999);
+        final h = mins ~/ 60;
+        final m = mins % 60;
+        status = 'Heating up';
+        statusNote = h > 0 ? '${h}h ${m}m left' : '$mins min left';
       }
     }
     return GridView.count(
@@ -337,26 +471,78 @@ class HomeScreen extends StatelessWidget {
       crossAxisSpacing: 10,
       childAspectRatio: 1.55,
       children: [
-        _stat(Icons.medication_outlined, AppColors.primarySoft, AppColors.primary, 'Average', avg == null ? '--' : '$avg', 'mg/dL', false),
-        _stat(Icons.restaurant_outlined, AppColors.primary, Colors.white, 'Time in range', tir == null ? '--' : '$tir%', 'last 12 hours', true),
-        _stat(Icons.touch_app_outlined, AppColors.primarySoft, AppColors.primary, 'Sensor life', life, lifeNote, false),
-        _stat(Icons.bolt, AppColors.primarySoft, AppColors.success, 'Status', status, statusNote, false),
+        _stat(
+          Icons.medication_outlined,
+          AppColors.primarySoft,
+          AppColors.primary,
+          'Average',
+          avg == null ? '--' : '$avg',
+          'mg/dL',
+          false,
+        ),
+        _stat(
+          Icons.restaurant_outlined,
+          AppColors.primary,
+          Colors.white,
+          'Time in range',
+          tir == null ? '--' : '$tir%',
+          'last 12 hours',
+          true,
+        ),
+        _stat(
+          Icons.touch_app_outlined,
+          AppColors.primarySoft,
+          AppColors.primary,
+          'Sensor life',
+          life,
+          lifeNote,
+          false,
+        ),
+        _stat(
+          Icons.bolt,
+          AppColors.primarySoft,
+          AppColors.success,
+          'Status',
+          status,
+          statusNote,
+          false,
+        ),
       ],
     );
   }
 
-  Widget _stat(IconData icon, Color bg, Color fg, String title, String value, String note, bool filled) {
+  Widget _stat(
+    IconData icon,
+    Color bg,
+    Color fg,
+    String title,
+    String value,
+    String note,
+    bool filled,
+  ) {
     final titleColor = filled ? Colors.white70 : AppColors.textSecondary;
     final valueColor = filled ? Colors.white : AppColors.textPrimary;
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(18)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(18),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(child: Text(title, style: TextStyle(fontSize: 13, color: titleColor, fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: titleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
               Icon(icon, size: 18, color: fg),
             ],
           ),
@@ -365,10 +551,20 @@ class HomeScreen extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: value.length > 6 ? 18 : 26, fontWeight: FontWeight.w800, color: valueColor, height: 1),
+            style: TextStyle(
+              fontSize: value.length > 6 ? 18 : 26,
+              fontWeight: FontWeight.w800,
+              color: valueColor,
+              height: 1,
+            ),
           ),
           if (note.isNotEmpty)
-            Text(note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: titleColor)),
+            Text(
+              note,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: titleColor),
+            ),
         ],
       ),
     );
@@ -538,7 +734,7 @@ class HomeScreen extends StatelessWidget {
     required bool isConnected,
     String unitStr = 'mg/dL',
     String displayGlucose = '--',
-    String targetStr = '90-130',
+    String targetStr = '80-130',
     bool isUrgentLow = false,
     bool isHigh = false,
   }) {
@@ -836,7 +1032,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Range slider bar: 40 ... Target Range (90-130 mg/dL) ... 300
+          // Range slider bar: 40 ... Target Range (80-130 mg/dL) ... 300
           const SizedBox(height: 8),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -976,9 +1172,12 @@ class HomeScreen extends StatelessWidget {
             String lifeText = '14 days left';
             if (wear != null) {
               final now = DateTime.now();
-              if (now.isBefore(wear.warmupEndAt)) {
-                final mins = wear.warmupEndAt.difference(now).inMinutes;
-                lifeText = 'Warmup: ${mins}m';
+              if (controller.isSensorWarming) {
+                final end = controller.sensorWarmupEndAt ?? now;
+                final mins = end.difference(now).inMinutes.clamp(0, 999);
+                final h = mins ~/ 60;
+                final m = mins % 60;
+                lifeText = h > 0 ? 'Heating: ${h}h ${m}m' : 'Heating: ${mins}m';
               } else {
                 final daysLeft = wear.expiresAt.difference(now).inDays;
                 lifeText = daysLeft > 0
@@ -1551,6 +1750,279 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// Pomodoro-style circular warmup widget (wall-clock based — never pauses).
+class _WarmupCountdown extends StatefulWidget {
+  const _WarmupCountdown({required this.endAt, this.onFinished});
+  final DateTime endAt;
+  final VoidCallback? onFinished;
+
+  @override
+  State<_WarmupCountdown> createState() => _WarmupCountdownState();
+}
+
+class _WarmupCountdownState extends State<_WarmupCountdown>
+    with WidgetsBindingObserver {
+  static const _totalWarmup = Duration(hours: 2);
+  Timer? _tick;
+  bool _finishedNotified = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTicker();
+  }
+
+  void _startTicker() {
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+      _maybeFinish();
+    });
+  }
+
+  void _maybeFinish() {
+    if (_finishedNotified) return;
+    if (DateTime.now().isBefore(widget.endAt)) return;
+    _finishedNotified = true;
+    widget.onFinished?.call();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() {});
+      _startTicker();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final total = d.inSeconds.clamp(0, 99 * 3600);
+    final h = total ~/ 3600;
+    final m = (total % 3600) ~/ 60;
+    final s = total % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:'
+          '${m.toString().padLeft(2, '0')}:'
+          '${s.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:'
+        '${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = widget.endAt.difference(DateTime.now());
+    final left = remaining.isNegative ? Duration.zero : remaining;
+    final startAt = widget.endAt.subtract(_totalWarmup);
+    final elapsedMs = DateTime.now().difference(startAt).inMilliseconds;
+    final remainingFraction = (1.0 - (elapsedMs / _totalWarmup.inMilliseconds))
+        .clamp(0.0, 1.0);
+    final readyAt = DateFormat.jm().format(widget.endAt.toLocal());
+    final lowEnd = UiPerf.isLowEndLayout(context);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(20, lowEnd ? 18 : 22, 20, lowEnd ? 18 : 22),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: AppColors.primaryBorder.withValues(alpha: 0.65),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF8F6), AppColors.primarySoft, Color(0xFFFFFFFF)],
+          stops: [0.0, 0.45, 1.0],
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.device_thermostat_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'SENSOR WARMUP',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.1,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: lowEnd ? 16 : 22),
+          SizedBox(
+            width: lowEnd ? 200 : 228,
+            height: lowEnd ? 200 : 228,
+            child: CustomPaint(
+              painter: _PomodoroRingPainter(
+                progress: remainingFraction.toDouble(),
+                trackColor: AppColors.primaryBorder.withValues(alpha: 0.35),
+                progressColor: AppColors.primary,
+                glowColor: AppColors.primary.withValues(alpha: 0.18),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _fmt(left),
+                      style: TextStyle(
+                        fontSize: lowEnd ? 34 : 40,
+                        height: 1,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -1.2,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'remaining',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: lowEnd ? 16 : 20),
+          Text(
+            'Ready at $readyAt',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '2-hour calibration · keep sensor on',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PomodoroRingPainter extends CustomPainter {
+  _PomodoroRingPainter({
+    required this.progress,
+    required this.trackColor,
+    required this.progressColor,
+    required this.glowColor,
+  });
+
+  final double progress;
+  final Color trackColor;
+  final Color progressColor;
+  final Color glowColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final stroke = size.shortestSide * 0.085;
+    final radius = (size.shortestSide - stroke) / 2;
+    const start = -math.pi / 2;
+
+    final track = Paint()
+      ..color = trackColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+
+    final glow = Paint()
+      ..color = glowColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke + 10
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+
+    final arc = Paint()
+      ..shader = SweepGradient(
+        startAngle: 0,
+        endAngle: math.pi * 2,
+        colors: [
+          progressColor.withValues(alpha: 0.75),
+          progressColor,
+          AppColors.primaryDark,
+        ],
+        transform: const GradientRotation(-math.pi / 2),
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(center, radius, track);
+    final sweep = (math.pi * 2) * progress.clamp(0.0, 1.0);
+    if (sweep > 0.001) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        false,
+        glow,
+      );
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        false,
+        arc,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PomodoroRingPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.progressColor != progressColor ||
+        oldDelegate.trackColor != trackColor;
+  }
+}
+
 class _ReminderHomeCards extends StatefulWidget {
   const _ReminderHomeCards({required this.api});
   final dynamic api;
@@ -1591,11 +2063,15 @@ class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
       if (map == null) continue;
       final parts = '${map['reminderTime'] ?? ''}'.split(':');
       if (parts.length < 2) continue;
-      final mins = (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
-      final delta = mins >= minutesNow ? mins - minutesNow : mins + 24 * 60 - minutesNow;
+      final mins =
+          (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+      final delta = mins >= minutesNow
+          ? mins - minutesNow
+          : mins + 24 * 60 - minutesNow;
       if (delta < best) {
         best = delta;
-        label = '${map['customName'] ?? map['mealType'] ?? 'Meal'} · ${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
+        label =
+            '${map['customName'] ?? map['mealType'] ?? 'Meal'} · ${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
       }
     }
     return label;
@@ -1604,8 +2080,13 @@ class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
   String _nextWater(dynamic raw) {
     if (raw is! Map) return '';
     if (raw['waterEnabled'] == false) return '';
-    final interval = int.tryParse('${raw['waterIntervalMinutes'] ?? 120}') ?? 120;
-    if (raw['quietHoursEnabled'] != false && _inQuiet('${raw['quietStart'] ?? '22:00'}', '${raw['quietEnd'] ?? '07:00'}')) {
+    final interval =
+        int.tryParse('${raw['waterIntervalMinutes'] ?? 120}') ?? 120;
+    if (raw['quietHoursEnabled'] != false &&
+        _inQuiet(
+          '${raw['quietStart'] ?? '22:00'}',
+          '${raw['quietEnd'] ?? '07:00'}',
+        )) {
       return 'Quiet until ${raw['quietEnd'] ?? '07:00'}';
     }
     if (interval <= 0) return '';
@@ -1618,6 +2099,7 @@ class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
       if (parts.length < 2) return 0;
       return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
     }
+
     final now = DateTime.now().hour * 60 + DateTime.now().minute;
     final from = minutes(start);
     final to = minutes(end);
@@ -1633,38 +2115,93 @@ class _ReminderHomeCardsState extends State<_ReminderHomeCards> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Today', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+        const Text(
+          'Today',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textPrimary,
+          ),
+        ),
         const SizedBox(height: 10),
-        _glanceRow(context, Icons.restaurant_outlined, AppColors.primary, 'Meals', '$meals logged', mealNext, MealRemindersScreen(api: widget.api)),
+        _glanceRow(
+          context,
+          Icons.restaurant_outlined,
+          AppColors.primary,
+          'Meals',
+          '$meals logged',
+          mealNext,
+          MealRemindersScreen(api: widget.api),
+        ),
         const SizedBox(height: 8),
-        _glanceRow(context, Icons.water_drop_outlined, AppColors.primary, 'Water', '$water mL', waterNext, WaterRemindersScreen(api: widget.api)),
+        _glanceRow(
+          context,
+          Icons.water_drop_outlined,
+          AppColors.primary,
+          'Water',
+          '$water mL',
+          waterNext,
+          WaterRemindersScreen(api: widget.api),
+        ),
       ],
     );
   }
 
-  Widget _glanceRow(BuildContext context, IconData icon, Color color, String title, String value, String next, Widget page) {
+  Widget _glanceRow(
+    BuildContext context,
+    IconData icon,
+    Color color,
+    String title,
+    String value,
+    String next,
+    Widget page,
+  ) {
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+        onTap: () =>
+            Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
             children: [
-              CircleAvatar(radius: 18, backgroundColor: color.withValues(alpha: 0.12), child: Icon(icon, color: color, size: 18)),
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: color.withValues(alpha: 0.12),
+                child: Icon(icon, color: color, size: 18),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                    if (next.isNotEmpty) Text(next, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    if (next.isNotEmpty)
+                      Text(
+                        next,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                   ],
                 ),
               ),
-              Text(value, style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
           ),
@@ -1771,12 +2308,24 @@ class _WellnessHomeCardState extends State<_WellnessHomeCard> {
 }
 
 class _HomeChart extends StatefulWidget {
-  const _HomeChart({required this.samples, required this.low, required this.high, required this.mmol, required this.connected, required this.onConnect, required this.api});
+  const _HomeChart({
+    required this.samples,
+    this.latest,
+    required this.low,
+    required this.high,
+    required this.mmol,
+    required this.connected,
+    required this.onConnect,
+    required this.api,
+    this.warming = false,
+  });
   final List<GlucoseSample> samples;
+  final GlucoseSample? latest;
   final double low;
   final double high;
   final bool mmol;
   final bool connected;
+  final bool warming;
   final VoidCallback onConnect;
   final dynamic api;
 
@@ -1784,13 +2333,17 @@ class _HomeChart extends StatefulWidget {
   State<_HomeChart> createState() => _HomeChartState();
 }
 
-class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMixin {
+class _HomeChartState extends State<_HomeChart>
+    with SingleTickerProviderStateMixin {
   int range = 0;
   int? picked;
   List<DateTime> marks = [];
   static const _labels = ['Live', '1h', '6h', '12h', '24h'];
   String? _pointsCacheKey;
   List<GlucoseSample> _cachedPoints = const [];
+  List<GlucoseSample> _serverSamples = const [];
+  String? _serverKey;
+  bool _loadingServer = false;
 
   Duration get _span => switch (range) {
     1 => const Duration(hours: 1),
@@ -1799,46 +2352,114 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
     4 => const Duration(hours: 24),
     _ => const Duration(minutes: 15),
   };
+
+  int get _hours => switch (range) {
+    1 => 1,
+    2 => 6,
+    3 => 12,
+    4 => 24,
+    _ => 0,
+  };
+
   late final AnimationController _draw;
 
   @override
   void initState() {
     super.initState();
-    final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    final reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     _draw = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: reduceMotion ? 0 : 450),
-    )..forward();
+      duration: Duration(milliseconds: reduceMotion ? 0 : 280),
+    );
+    if (reduceMotion) {
+      _draw.value = 1;
+    } else {
+      _draw.forward();
+    }
     _loadMarks();
   }
 
+  Future<void> _loadServerRange() async {
+    final hours = _hours;
+    if (hours <= 0) return;
+    final key = 'h$hours';
+    if (_serverKey == key || _loadingServer) return;
+    _loadingServer = true;
+    try {
+      final page = await widget.api.getGlucoseHistory(
+        hours: hours,
+        page: 1,
+        pageSize: 120,
+      );
+      final rawItems = page['items'];
+      final mapped = <GlucoseSample>[];
+      if (rawItems is List) {
+        for (final row in rawItems) {
+          if (row is! Map) continue;
+          final sample = AppController.sampleFromServerRow(
+            Map<String, dynamic>.from(row),
+          );
+          if (sample != null) mapped.add(sample);
+        }
+      }
+      // Server is newest-first; chart expects ascending.
+      mapped.sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
+      if (!mounted) return;
+      setState(() {
+        _serverSamples = mapped;
+        _serverKey = key;
+        _pointsCacheKey = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _serverSamples = const [];
+        _serverKey = key;
+        _pointsCacheKey = null;
+      });
+    } finally {
+      _loadingServer = false;
+    }
+  }
+
   List<GlucoseSample> _pointsForRange(BuildContext context) {
-    final last = widget.samples.isEmpty ? null : widget.samples.last;
+    final source = range == 0 ? widget.samples : _serverSamples;
+    final last = source.isEmpty ? null : source.last;
+    final live = widget.latest;
     final key =
-        '$range|${widget.samples.length}|${last?.seq}|${last?.wearId}|${widget.connected}';
+        '$range|${source.length}|${last?.seq}|${last?.wearId}|${live?.seq}|${live?.value}|${widget.connected}|$_serverKey';
     if (_pointsCacheKey == key) return _cachedPoints;
     final cutoff = DateTime.now().subtract(_span);
     final raw = <GlucoseSample>[];
-    for (var i = widget.samples.length - 1; i >= 0; i--) {
-      final s = widget.samples[i];
+    for (var i = source.length - 1; i >= 0; i--) {
+      final s = source[i];
       if (!s.measuredAt.isAfter(cutoff)) break;
       if (s.value != null) raw.add(s);
     }
     _cachedPoints = UiPerf.downsample(
       raw.reversed.toList(),
-      maxPoints: UiPerf.isLowEndLayout(context) ? 80 : 160,
+      maxPoints: UiPerf.isLowEndLayout(context) ? 48 : 96,
     );
     _pointsCacheKey = key;
     return _cachedPoints;
   }
 
   Future<void> _loadMarks() async {
-    final from = DateTime.now().toUtc().subtract(const Duration(hours: 24)).toIso8601String();
+    final from = DateTime.now()
+        .toUtc()
+        .subtract(const Duration(hours: 24))
+        .toIso8601String();
     final found = <DateTime>[];
     try {
       final today = await widget.api.getWellnessToday(startUtc: from);
       for (final item in (today['meals'] as List?) ?? const []) {
-        final at = DateTime.tryParse('${item['occurredAtUtc'] ?? ''}')?.toLocal();
+        final at = DateTime.tryParse(
+          '${item['occurredAtUtc'] ?? ''}',
+        )?.toLocal();
         if (at != null) found.add(at);
       }
     } catch (_) {}
@@ -1846,7 +2467,9 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
       final activities = await widget.api.getActivities(from: from);
       for (final item in activities) {
         if (item is! Map) continue;
-        final at = DateTime.tryParse('${item['occurredAtUtc'] ?? ''}')?.toLocal();
+        final at = DateTime.tryParse(
+          '${item['occurredAtUtc'] ?? ''}',
+        )?.toLocal();
         if (at != null) found.add(at);
       }
     } catch (_) {}
@@ -1871,7 +2494,12 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
       range = item;
       picked = null;
     });
-    _draw.forward(from: 0);
+    if (UiPerf.skipDecorativeMotion(context)) {
+      _draw.value = 1;
+    } else {
+      _draw.forward(from: 0);
+    }
+    if (item > 0) unawaited(_loadServerRange());
   }
 
   void _pick(double dx, double width, int count) {
@@ -1880,14 +2508,29 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
     setState(() => picked = (t * (count - 1)).round());
   }
 
+  double _toMg(GlucoseSample s) {
+    final v = s.value!;
+    return v > 30 ? v : v * 18.0182;
+  }
+
   @override
   Widget build(BuildContext context) {
     final points = _pointsForRange(context);
-    final values = points.map((s) => s.value! > 30 ? s.value! : s.value! * 18.0182).toList();
+    final values = points.map(_toMg).toList();
     final times = points.map((s) => s.measuredAt).toList();
-    String shown(double mg) => widget.mmol ? (mg / 18.0182).toStringAsFixed(1) : mg.round().toString();
-    final focus = values.isEmpty ? 0 : (picked ?? values.length - 1).clamp(0, values.length - 1);
-    final focusLabel = values.isEmpty ? '' : '${shown(values[focus])}\n${DateFormat('h:mm a').format(times[focus])}';
+    String shown(double mg) =>
+        widget.mmol ? (mg / 18.0182).toStringAsFixed(1) : mg.round().toString();
+    // Live number must match controller.latest (same source as "Your glucose").
+    final liveSample = range == 0 && widget.latest?.value != null
+        ? widget.latest!
+        : (points.isNotEmpty ? points.last : null);
+    final liveMg = liveSample == null ? null : _toMg(liveSample);
+    final focus = values.isEmpty
+        ? 0
+        : (picked ?? values.length - 1).clamp(0, values.length - 1);
+    final focusLabel = values.isEmpty
+        ? ''
+        : '${shown(values[focus])}\n${DateFormat('h:mm a').format(times[focus])}';
     final delta = values.length < 2 ? 0.0 : values.last - values.first;
     final trend = delta.abs() < 8 ? 0 : delta.sign.toInt();
     return Container(
@@ -1900,86 +2543,98 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-            children: [
-              for (var item = 0; item < _labels.length; item++)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () => _select(item),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: range == item ? AppColors.primary : AppColors.primarySoft,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _labels[item],
-                        style: TextStyle(
-                          color: range == item ? Colors.white : AppColors.textSecondary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-            ),
-          ),
-          const SizedBox(height: 8),
           SizedBox(
-            height: range == 0 && widget.connected && values.isNotEmpty ? 250 : 190,
-            child: range == 0 && !widget.connected
-                ? GestureDetector(
-                    onTap: widget.onConnect,
-                    child: const Center(
+            height: widget.connected && values.isNotEmpty ? 250 : 190,
+            child: widget.warming
+                ? const Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(horizontal: 24),
                       child: Text(
-                        'Device is not connected. Open 1h, 6h, 12h, or 24h for earlier readings.',
+                        'Device is warming up. Live glucose will appear after the 2-hour calibration.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700, height: 1.35),
-                      ),
-                    ),
-                  ),
-                  )
-                : range == 0 && values.isNotEmpty
-                ? GestureDetector(
-                    onTap: _noteSheet,
-                    child: _LiveGauge(
-                    mg: values.last,
-                    text: shown(values.last),
-                    unit: widget.mmol ? 'mmol/L' : 'mg/dL',
-                    low: widget.low,
-                    high: widget.high,
-                    trend: trend,
-                  ),
-                  )
-                : values.length < 2
-                ? Center(child: Text(range == 0 ? 'Collecting the last 15 minutes' : 'No readings in this range yet.', style: const TextStyle(color: AppColors.textSecondary)))
-                : LayoutBuilder(
-                    builder: (context, constraints) => GestureDetector(
-                      onTapDown: (details) => _pick(details.localPosition.dx, constraints.maxWidth, values.length),
-                      child: AnimatedBuilder(
-                        animation: _draw,
-                        builder: (context, _) => CustomPaint(
-                          painter: _SparkPainter(
-                            values: values,
-                            times: times,
-                            label: focusLabel,
-                            index: focus,
-                            low: widget.low,
-                            high: widget.high,
-                            marks: marks,
-                            progress: Curves.easeOutCubic.transform(_draw.value),
-                          ),
-                          child: const SizedBox.expand(),
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
                         ),
                       ),
                     ),
+                  )
+                : !widget.connected
+                ? GestureDetector(
+                    onTap: widget.onConnect,
+                    child: const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          'Device is not connected. Connect your device to see live glucose readings.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : range == 0
+                ? (liveMg != null
+                      ? GestureDetector(
+                          onTap: _noteSheet,
+                          child: _LiveGauge(
+                            mg: liveMg,
+                            text: shown(liveMg),
+                            unit: widget.mmol ? 'mmol/L' : 'mg/dL',
+                            low: widget.low,
+                            high: widget.high,
+                            trend: trend,
+                          ),
+                        )
+                      : const Center(
+                          child: Text(
+                            'Collecting live glucose readings',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ))
+                : values.length < 2
+                ? const Center(
+                    child: Text(
+                      'Collecting live glucose readings',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      Widget paint(double progress) => CustomPaint(
+                        painter: _SparkPainter(
+                          values: values,
+                          times: times,
+                          label: focusLabel,
+                          index: focus,
+                          low: widget.low,
+                          high: widget.high,
+                          marks: marks,
+                          progress: progress,
+                        ),
+                        child: const SizedBox.expand(),
+                      );
+                      return GestureDetector(
+                        onTapDown: (details) => _pick(
+                          details.localPosition.dx,
+                          constraints.maxWidth,
+                          values.length,
+                        ),
+                        child: UiPerf.skipDecorativeMotion(context)
+                            ? paint(1.0)
+                            : AnimatedBuilder(
+                                animation: _draw,
+                                builder: (_, __) => paint(
+                                  Curves.easeOutCubic.transform(_draw.value),
+                                ),
+                              ),
+                      );
+                    },
                   ),
           ),
         ],
@@ -1989,7 +2644,14 @@ class _HomeChartState extends State<_HomeChart> with SingleTickerProviderStateMi
 }
 
 class _LiveGauge extends StatelessWidget {
-  const _LiveGauge({required this.mg, required this.text, required this.unit, required this.low, required this.high, required this.trend});
+  const _LiveGauge({
+    required this.mg,
+    required this.text,
+    required this.unit,
+    required this.low,
+    required this.high,
+    required this.trend,
+  });
   final double mg;
   final String text;
   final String unit;
@@ -2000,20 +2662,42 @@ class _LiveGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = mg < low || mg > high ? AppColors.danger : AppColors.success;
-    final arrow = trend > 0 ? Icons.trending_up_rounded : trend < 0 ? Icons.trending_down_rounded : Icons.trending_flat_rounded;
+    final arrow = trend > 0
+        ? Icons.trending_up_rounded
+        : trend < 0
+        ? Icons.trending_down_rounded
+        : Icons.trending_flat_rounded;
     return CustomPaint(
       painter: _GaugePainter(mg: mg),
       child: Center(
         child: Container(
           width: 118,
           height: 118,
-          decoration: const BoxDecoration(color: AppColors.surface, shape: BoxShape.circle),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            shape: BoxShape.circle,
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(arrow, color: color, size: 22),
-              Text(text, style: TextStyle(fontSize: 40, height: 1, fontWeight: FontWeight.w800, color: color)),
-              Text(unit, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+              Text(
+                text,
+                style: TextStyle(
+                  fontSize: 40,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+              Text(
+                unit,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -2049,11 +2733,21 @@ class _GaugePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _GaugePainter oldDelegate) => oldDelegate.mg != mg;
+  bool shouldRepaint(covariant _GaugePainter oldDelegate) =>
+      oldDelegate.mg != mg;
 }
 
 class _SparkPainter extends CustomPainter {
-  _SparkPainter({required this.values, required this.times, required this.label, required this.index, required this.progress, required this.low, required this.high, required this.marks});
+  _SparkPainter({
+    required this.values,
+    required this.times,
+    required this.label,
+    required this.index,
+    required this.progress,
+    required this.low,
+    required this.high,
+    required this.marks,
+  });
   final List<double> values;
   final List<DateTime> times;
   final String label;
@@ -2068,7 +2762,12 @@ class _SparkPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (values.length < 2 || size.width < 40 || size.height < 40) return;
     const bottomGutter = 22.0;
-    final plot = Rect.fromLTWH(4, 28, size.width - 8, size.height - 28 - bottomGutter);
+    final plot = Rect.fromLTWH(
+      4,
+      28,
+      size.width - 8,
+      size.height - 28 - bottomGutter,
+    );
     final minV = values.reduce((a, b) => a < b ? a : b) - 12;
     final maxV = values.reduce((a, b) => a > b ? a : b) + 18;
     final span = (maxV - minV).abs() < 1 ? 1.0 : (maxV - minV);
@@ -2093,7 +2792,12 @@ class _SparkPainter extends CustomPainter {
       }
     }
     final metrics = path.computeMetrics().toList();
-    final drawn = metrics.isEmpty ? path : metrics.first.extractPath(0, metrics.first.length * progress.clamp(0, 1));
+    final drawn = metrics.isEmpty
+        ? path
+        : metrics.first.extractPath(
+            0,
+            metrics.first.length * progress.clamp(0, 1),
+          );
     canvas.drawPath(
       drawn,
       Paint()
@@ -2105,7 +2809,13 @@ class _SparkPainter extends CustomPainter {
     );
 
     final last = points[index.clamp(0, points.length - 1)];
-    canvas.drawLine(Offset(last.dx, last.dy), Offset(last.dx, plot.bottom), Paint()..color = AppColors.surfaceBorder..strokeWidth = 1);
+    canvas.drawLine(
+      Offset(last.dx, last.dy),
+      Offset(last.dx, plot.bottom),
+      Paint()
+        ..color = AppColors.surfaceBorder
+        ..strokeWidth = 1,
+    );
     canvas.drawCircle(last, 5, Paint()..color = AppColors.primary);
     canvas.drawCircle(last, 2.2, Paint()..color = AppColors.surface);
     for (final mark in marks) {
@@ -2119,7 +2829,11 @@ class _SparkPainter extends CustomPainter {
         }
       }
       if (best > 30) continue;
-      canvas.drawCircle(points[nearest].translate(0, -12), 5, Paint()..color = AppColors.primary);
+      canvas.drawCircle(
+        points[nearest].translate(0, -12),
+        5,
+        Paint()..color = AppColors.primary,
+      );
     }
 
     final badge = TextPainter(
@@ -2129,8 +2843,18 @@ class _SparkPainter extends CustomPainter {
             TextSpan(
               text: line == label.split('\n').first ? '$line\n' : line,
               style: line == label.split('\n').first
-                  ? const TextStyle(fontSize: 15, height: 1.1, fontWeight: FontWeight.w800, color: AppColors.textPrimary)
-                  : const TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                  ? const TextStyle(
+                      fontSize: 15,
+                      height: 1.1,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                    )
+                  : const TextStyle(
+                      fontSize: 11,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
             ),
         ],
       ),
@@ -2150,16 +2874,25 @@ class _SparkPainter extends CustomPainter {
     for (var i = 0; i < 5; i++) {
       final index = ((values.length - 1) * i / 4).round();
       final tp = TextPainter(
-        text: TextSpan(text: DateFormat('h:mm').format(times[index]), style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+        text: TextSpan(
+          text: DateFormat('h:mm').format(times[index]),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+        ),
         textDirection: ui.TextDirection.ltr,
       )..layout();
       final limit = size.width - tp.width;
-      final x = limit <= 0 ? 0.0 : (xOf(index) - tp.width / 2).clamp(0.0, limit);
+      final x = limit <= 0
+          ? 0.0
+          : (xOf(index) - tp.width / 2).clamp(0.0, limit);
       tp.paint(canvas, Offset(x, size.height - tp.height));
     }
   }
 
   @override
   bool shouldRepaint(covariant _SparkPainter oldDelegate) =>
-      oldDelegate.values != values || oldDelegate.label != label || oldDelegate.index != index || oldDelegate.marks.length != marks.length || oldDelegate.progress != progress;
+      oldDelegate.values != values ||
+      oldDelegate.label != label ||
+      oldDelegate.index != index ||
+      oldDelegate.marks.length != marks.length ||
+      oldDelegate.progress != progress;
 }

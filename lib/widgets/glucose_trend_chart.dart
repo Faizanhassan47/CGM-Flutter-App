@@ -8,7 +8,7 @@ class GlucoseTrendCard extends StatefulWidget {
   const GlucoseTrendCard({
     super.key,
     required this.samples,
-    this.lowTarget = 90.0,
+    this.lowTarget = 80.0,
     this.highTarget = 130.0,
   });
 

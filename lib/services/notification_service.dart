@@ -8,6 +8,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'api_service.dart';
 import 'wellness_notification_actions.dart';
+import 'wellness_reminder_log.dart';
 
 /// Top-level background message handler for FCM.
 /// Must be an entry-point function outside of any class.
@@ -33,7 +34,9 @@ class NotificationService {
   // Versioned so Android applies the corrected importance/sound settings even
   // when the previous channel was already created on the device.
   static const String wellnessChannelId = 'wellness_reminders_channel_v2';
+  static const String sensorChannelId = 'cgm_sensor_channel_v1';
   static const int wellnessIdStart = 200000;
+  static const int sensorReadyNotificationId = 190001;
 
   bool _initialized = false;
   bool _listenersBound = false;
@@ -297,6 +300,7 @@ class NotificationService {
     );
     var id = wellnessIdStart;
     final now = tz.TZDateTime.now(tz.local);
+    final reminderRows = <Map<String, dynamic>>[];
     bool quiet(int hour) {
       final quietEnabled =
           settings['quietHoursEnabled'] == true ||
@@ -345,16 +349,32 @@ class NotificationService {
         if (!when.isAfter(now) || quiet(when.hour) || !isMealEnabled) {
           continue;
         }
+        final mealTitle =
+            'Time for ${schedule['customName'] ?? schedule['mealType'] ?? 'your meal'}';
+        const mealBody =
+            'It\'s time for your scheduled meal. You can log it in Circle.';
+        final mealPayload =
+            'wellness:meal:${'${schedule['mealType'] ?? 'snack'}'.toLowerCase()}';
+        final mealId = id++;
         await _localNotifications.zonedSchedule(
-          id: id++,
-          title:
-              'Time for ${schedule['customName'] ?? schedule['mealType'] ?? 'your meal'}',
-          body: 'It\'s time for your scheduled meal. You can log it in Circle.',
+          id: mealId,
+          title: mealTitle,
+          body: mealBody,
           scheduledDate: when,
           notificationDetails: mealNotificationDetails(),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          payload: 'wellness:meal:${'${schedule['mealType'] ?? 'snack'}'.toLowerCase()}',
+          payload: mealPayload,
         );
+        // Mirror into in-app Notifications once the slot time has arrived.
+        reminderRows.add({
+          'id': 'meal:$mealId:${when.millisecondsSinceEpoch}',
+          'title': mealTitle,
+          'message': mealBody,
+          'severity': 'Warning',
+          'timestamp': when.toLocal().toIso8601String(),
+          'isRead': false,
+          'isCritical': false,
+        });
       }
       if (isWaterEnabled) {
         // The API allows intervals from 5 to 720 minutes. Keep the same
@@ -377,8 +397,9 @@ class NotificationService {
             minute % 60,
           );
           if (!when.isAfter(now) || quiet(when.hour)) continue;
+          final waterId = id++;
           await _localNotifications.zonedSchedule(
-            id: id++,
+            id: waterId,
             title: 'Hydration reminder',
             body: 'Time to drink water. How much water did you drink?',
             scheduledDate: when,
@@ -386,9 +407,99 @@ class NotificationService {
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             payload: 'wellness:water',
           );
+          reminderRows.add({
+            'id': 'water:$waterId:${when.millisecondsSinceEpoch}',
+            'title': 'Hydration reminder',
+            'message': 'Time to drink water. How much water did you drink?',
+            'severity': 'Warning',
+            'timestamp': when.toLocal().toIso8601String(),
+            'isRead': false,
+            'isCritical': false,
+          });
         }
       }
     }
+    if (reminderRows.isNotEmpty) {
+      await WellnessReminderLog.upsertMany(reminderRows);
+    }
+  }
+
+  /// Schedule (or refresh) the “sensor ready” notice at the absolute warmup end.
+  Future<void> scheduleSensorReadyNotification(DateTime readyAtUtcOrLocal) async {
+    if (!_initialized) {
+      await initialize();
+    }
+    await cancelSensorReadyNotification();
+    tz.initializeTimeZones();
+    final when = tz.TZDateTime.from(readyAtUtcOrLocal.toLocal(), tz.local);
+    final now = tz.TZDateTime.now(tz.local);
+    if (!when.isAfter(now)) {
+      // Already ready — notify immediately once.
+      await showSensorReadyNotification();
+      return;
+    }
+
+    if (!kIsWeb && Platform.isAndroid) {
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          sensorChannelId,
+          'Sensor status',
+          description: 'Sensor warmup and readiness notifications',
+          importance: Importance.high,
+          playSound: true,
+          enableVibration: true,
+        ),
+      );
+    }
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        sensorChannelId,
+        'Sensor status',
+        channelDescription: 'Sensor warmup and readiness notifications',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: true,
+        enableVibration: true,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    await _localNotifications.zonedSchedule(
+      id: sensorReadyNotificationId,
+      title: 'Your app is ready to use',
+      body:
+          'Sensor warmup is complete. Live glucose readings are now available in Circle.',
+      scheduledDate: when,
+      notificationDetails: details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: 'sensor:ready',
+    );
+    debugPrint('[Notifications] Sensor ready scheduled for $when');
+  }
+
+  Future<void> showSensorReadyNotification() async {
+    await showLocalAlert(
+      title: 'Your app is ready to use',
+      body:
+          'Sensor warmup is complete. Live glucose readings are now available in Circle.',
+      payload: 'sensor:ready',
+      notificationId: sensorReadyNotificationId,
+    );
+  }
+
+  Future<void> cancelSensorReadyNotification() async {
+    if (!_initialized) return;
+    await _localNotifications.cancel(id: sensorReadyNotificationId);
   }
 
   /// Helper to inspect registered pending scheduled notifications for debugging.

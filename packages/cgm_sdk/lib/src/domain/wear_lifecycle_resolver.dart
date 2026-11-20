@@ -18,7 +18,7 @@ const int kWearLifetimeDays = 15;
 ///
 /// Just change this number，`BindActivationService.preheatDuration` / `WarmupPage._total` /
 /// `LinearAlgorithmGateway.warmupSeconds` Everybody follow。
-const int kWearWarmupMinutes = 15;
+const int kWearWarmupMinutes = 120;
 
 /// Preheating time [Duration] form, which can be used directly by callers who need duration。
 const Duration kWearWarmupDuration = Duration(minutes: kWearWarmupMinutes);
