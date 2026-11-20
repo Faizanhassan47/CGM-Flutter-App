@@ -58,6 +58,37 @@ class AppController extends ChangeNotifier {
   String language = AppConfig.defaultLanguage;
   String referralCode = '';
   bool profileCompleted = false;
+  bool emailVerified = false;
+  /// When set, root shows the email verification screen before onboarding.
+  String? pendingEmailVerification;
+
+  /// True until the user has a live wear session or a stored device binding.
+  bool get needsDeviceSetup =>
+      wear == null && _binding == null && activeDevice == null;
+
+  bool get needsEmailVerification =>
+      pendingEmailVerification != null &&
+      pendingEmailVerification!.trim().isNotEmpty;
+
+  /// Clears leftover pairing from a previous account on this phone.
+  Future<void> _clearLocalDeviceState() async {
+    wear = null;
+    activeDevice = null;
+    activeSensor = null;
+    _binding = null;
+    await api.clearBackendBinding();
+    try {
+      await CgmSdk.unbind();
+    } catch (_) {}
+  }
+
+  /// After auth: clear stale local pairing, then restore this account's device.
+  Future<void> _syncDeviceStateAfterAuth({required bool forceSetup}) async {
+    await _clearLocalDeviceState();
+    if (forceSetup) return;
+    await loadActiveDeviceAndSensor();
+    wear = await CgmSdk.currentWear();
+  }
   double targetLow = 90.0;
   double targetHigh = 130.0;
   double urgentLowThreshold = 55.0;
@@ -394,6 +425,7 @@ class AppController extends ChangeNotifier {
             data['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
         language = data['language']?.toString() ?? language;
         referralCode = data['referralCode']?.toString() ?? referralCode;
+        emailVerified = data['emailVerified'] == true || emailVerified;
         final wasComplete = profileCompleted;
         profileCompleted = data['profileCompleted'] == true;
         if (wasComplete != profileCompleted) _bumpSession();
@@ -745,27 +777,77 @@ class AppController extends ChangeNotifier {
 
   Future<void> login(String username, String password) async {
     await _run(() async {
-      final res = await api.login(username.trim(), password);
-      authenticated = true;
-      final userMap = res['user'];
-      if (userMap is Map) {
-        final name = userMap['fullName']?.toString().trim();
-        final email = userMap['email']?.toString().trim();
-        if (name != null && name.isNotEmpty) fullName = name;
-        if (email != null && email.isNotEmpty) userEmail = email;
-        authProvider = userMap['authProvider']?.toString() ?? authProvider;
-        hasPassword = userMap['hasPassword'] == true;
-        profileCompleted = userMap['profileCompleted'] == true;
-        final code = userMap['referralCode']?.toString().trim();
-        if (code != null && code.isNotEmpty) referralCode = code;
-        preferredGlucoseUnit =
-            userMap['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
+      try {
+        final res = await api.login(username.trim(), password);
+        await _completeAuthenticatedSession(res, forceDeviceSetup: false);
+      } on ApiException catch (e) {
+        if (e.requiresEmailVerification) {
+          pendingEmailVerification =
+              e.verificationEmail ?? username.trim().toLowerCase();
+          emailVerified = false;
+          authenticated = false;
+          _bumpSession();
+          notifyListeners();
+          return;
+        }
+        rethrow;
       }
-      _bumpSession();
-      notifyListeners();
-      unawaited(loadUserProfile());
-      unawaited(_hydrateSecondary());
     });
+  }
+
+  Future<void> _completeAuthenticatedSession(
+    Map<String, dynamic> res, {
+    required bool forceDeviceSetup,
+  }) async {
+    authenticated = true;
+    pendingEmailVerification = null;
+    final userMap = res['user'];
+    if (userMap is Map) {
+      final name = userMap['fullName']?.toString().trim();
+      final email = userMap['email']?.toString().trim();
+      if (name != null && name.isNotEmpty) fullName = name;
+      if (email != null && email.isNotEmpty) userEmail = email;
+      authProvider = userMap['authProvider']?.toString() ?? authProvider;
+      hasPassword = userMap['hasPassword'] == true;
+      emailVerified = userMap['emailVerified'] == true;
+      profileCompleted = userMap['profileCompleted'] == true;
+      final code = userMap['referralCode']?.toString().trim();
+      if (code != null && code.isNotEmpty) referralCode = code;
+      preferredGlucoseUnit =
+          userMap['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
+    } else {
+      emailVerified = true;
+    }
+    await _syncDeviceStateAfterAuth(forceSetup: forceDeviceSetup);
+    _bumpSession();
+    notifyListeners();
+    unawaited(loadUserProfile());
+    unawaited(_hydrateSecondary());
+  }
+
+  Future<void> verifyEmailCode(String email, String code) async {
+    await _run(() async {
+      final res = await api.verifyEmail(email: email.trim(), code: code.trim());
+      await _completeAuthenticatedSession(res, forceDeviceSetup: true);
+    });
+  }
+
+  Future<void> resendEmailVerificationCode(String email) async {
+    await api.resendEmailVerification(email.trim());
+  }
+
+  void beginEmailVerification(String email) {
+    pendingEmailVerification = email.trim().toLowerCase();
+    authenticated = false;
+    emailVerified = false;
+    _bumpSession();
+    notifyListeners();
+  }
+
+  void cancelEmailVerification() {
+    pendingEmailVerification = null;
+    _bumpSession();
+    notifyListeners();
   }
 
   Future<void> googleLogin({
@@ -791,7 +873,8 @@ class AppController extends ChangeNotifier {
         profilePictureUrl = photoUrl;
       }
       final userMap = res['user'];
-      if (userMap is Map<String, dynamic>) {
+      var isNewSocialUser = false;
+      if (userMap is Map) {
         final accountName = userMap['fullName']?.toString().trim();
         final accountEmail = userMap['email']?.toString().trim();
         if (accountName != null && accountName.isNotEmpty) {
@@ -804,7 +887,15 @@ class AppController extends ChangeNotifier {
         if (code != null && code.isNotEmpty) {
           referralCode = code;
         }
+        profileCompleted = userMap['profileCompleted'] == true;
+        isNewSocialUser = userMap['profileCompleted'] != true;
       }
+      emailVerified = true;
+      pendingEmailVerification = null;
+      if (userMap is Map && userMap['profileCompleted'] == true) {
+        profileCompleted = true;
+      }
+      await _syncDeviceStateAfterAuth(forceSetup: isNewSocialUser);
       _bumpSession();
       notifyListeners();
       await loadUserProfile();
@@ -829,31 +920,29 @@ class AppController extends ChangeNotifier {
         dateOfBirth: dob,
         gender: selectedGender,
       );
-      authenticated = true;
       fullName = name;
-      userEmail = email;
+      userEmail = email.trim().toLowerCase();
       authProvider = 'Email';
       hasPassword = true;
       phoneNumber = phone ?? '';
       dateOfBirth = dob ?? '';
       gender = selectedGender ?? '';
-      profileCompleted = true;
-      final userMap = res['user'];
-      if (userMap is Map) {
-        final code = userMap['referralCode']?.toString().trim();
-        if (code != null && code.isNotEmpty) {
-          referralCode = code;
-        }
-        if (userMap['profileCompleted'] == true) {
-          profileCompleted = true;
-        }
-        preferredGlucoseUnit =
-            userMap['preferredGlucoseUnit']?.toString() ?? preferredGlucoseUnit;
+      profileCompleted = false;
+      emailVerified = false;
+
+      final requiresVerification = res['requiresEmailVerification'] == true ||
+          res['accessToken'] == null ||
+          '${res['accessToken']}'.isEmpty;
+      if (requiresVerification) {
+        pendingEmailVerification =
+            (res['email']?.toString() ?? email).trim().toLowerCase();
+        authenticated = false;
+        _bumpSession();
+        notifyListeners();
+        return;
       }
-      _bumpSession();
-      notifyListeners();
-      unawaited(loadUserProfile());
-      unawaited(_hydrateSecondary());
+
+      await _completeAuthenticatedSession(res, forceDeviceSetup: true);
     });
   }
 
@@ -924,6 +1013,9 @@ class AppController extends ChangeNotifier {
     await _run(() async {
       await api.logout();
       authenticated = false;
+      pendingEmailVerification = null;
+      emailVerified = false;
+      profileCompleted = false;
       wear = null;
       history = [];
       latest = null;

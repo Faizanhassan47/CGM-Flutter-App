@@ -3,7 +3,6 @@ import '../../core/app_theme.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/pill_button.dart';
-import 'pairing_guide_screen.dart';
 
 class PatientProfileSetupScreen extends StatefulWidget {
   const PatientProfileSetupScreen({super.key, required this.controller});
@@ -138,10 +137,7 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
         push: pushNotifications,
         critical: criticalAlerts,
       );
-
-      if (mounted) {
-        await openDeviceSetup(context, widget.controller);
-      }
+      // Root routing switches to DeviceOnboardingGate after profileCompleted.
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

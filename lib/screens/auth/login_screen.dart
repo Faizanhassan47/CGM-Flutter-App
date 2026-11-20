@@ -52,8 +52,10 @@ class _LoginScreenState extends State<LoginScreen> {
     widget.controller.clearError();
     try {
       await widget.controller.login(email, password);
+      // Unverified accounts are routed to EmailVerificationScreen via root.
     } catch (_) {
       if (!mounted) return;
+      if (widget.controller.needsEmailVerification) return;
       setState(() {
         validationError =
             widget.controller.error ?? 'Login failed. Check email and password.';

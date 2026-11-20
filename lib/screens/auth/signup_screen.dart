@@ -108,8 +108,11 @@ class _SignupScreenState extends State<SignupScreen> {
             : dateOfBirthController.text.trim(),
         selectedGender: selectedGender,
       );
-      if (mounted && widget.controller.authenticated) {
-        Navigator.of(context).pop();
+      if (!mounted) return;
+      // Root switches to email verification (or onboarding if already verified).
+      if (widget.controller.needsEmailVerification ||
+          widget.controller.authenticated) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (_) {
       if (!mounted) return;

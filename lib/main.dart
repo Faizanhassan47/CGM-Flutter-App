@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/app_config.dart';
 import 'core/app_theme.dart';
+import 'screens/auth/email_verification_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/main_shell.dart';
+import 'screens/onboarding/device_onboarding_gate.dart';
 import 'screens/onboarding/patient_profile_setup_screen.dart';
 import 'screens/onboarding/welcome_screen.dart';
 import 'services/api_service.dart';
@@ -190,6 +192,12 @@ class _CircleAppState extends State<CircleApp> with WidgetsBindingObserver {
           if (controller.loading && !controller.sdkReady) {
             return const SplashView();
           }
+          if (controller.needsEmailVerification) {
+            return EmailVerificationScreen(
+              controller: controller,
+              email: controller.pendingEmailVerification!,
+            );
+          }
           if (!controller.authenticated) {
             if (_welcomeSeen == null) return const SplashView();
             if (_welcomeSeen == false) {
@@ -197,8 +205,13 @@ class _CircleAppState extends State<CircleApp> with WidgetsBindingObserver {
             }
             return LoginScreen(controller: controller);
           }
-          if (!controller.profileCompleted && controller.wear == null) {
+          // Incomplete profile → profile setup
+          if (!controller.profileCompleted) {
             return PatientProfileSetupScreen(controller: controller);
+          }
+          // No paired device → pairing guide → device setup
+          if (controller.needsDeviceSetup) {
+            return DeviceOnboardingGate(controller: controller);
           }
           return MainShell(controller: controller);
         },

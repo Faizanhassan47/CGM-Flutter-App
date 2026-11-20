@@ -10,9 +10,28 @@ import 'logging_http_client.dart';
 
 /// Exception thrown for any API communication or validation errors.
 class ApiException implements Exception {
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message, {this.statusCode, this.data});
   final String message;
   final int? statusCode;
+  final Map<String, dynamic>? data;
+
+  bool get requiresEmailVerification {
+    if (data == null) return false;
+    if (data!['requiresEmailVerification'] == true) return true;
+    final nested = data!['message'];
+    return nested is Map && nested['requiresEmailVerification'] == true;
+  }
+
+  String? get verificationEmail {
+    final direct = data?['email']?.toString();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final nested = data?['message'];
+    if (nested is Map) {
+      final email = nested['email']?.toString();
+      if (email != null && email.isNotEmpty) return email;
+    }
+    return null;
+  }
 
   @override
   String toString() => message;
@@ -221,6 +240,7 @@ class ApiService {
       throw ApiException(
         _message(data, 'Login failed.'),
         statusCode: response.statusCode,
+        data: data is Map ? _map(data) : null,
       );
     }
     await _saveTokens('${data['accessToken']}', '${data['refreshToken']}');
@@ -244,6 +264,8 @@ class ApiService {
   }
 
   /// Register a new patient account.
+  /// Email/password signup returns [requiresEmailVerification] and no tokens
+  /// until [verifyEmail] succeeds.
   Future<Map<String, dynamic>> register(
     String fullName,
     String email,
@@ -264,9 +286,37 @@ class ApiService {
       if (gender?.trim().isNotEmpty == true) 'gender': gender!.trim(),
       'preferredGlucoseUnit': preferredGlucoseUnit,
     });
-    await _saveTokens('${data['accessToken']}', '${data['refreshToken']}');
-    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final map = _map(data);
+    final access = map['accessToken']?.toString();
+    final refresh = map['refreshToken']?.toString();
+    if (access != null &&
+        access.isNotEmpty &&
+        refresh != null &&
+        refresh.isNotEmpty) {
+      await _saveTokens(access, refresh);
+    }
+    return map;
   }
+
+  /// Confirm signup email with the 6-digit code (issues auth tokens).
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String code,
+  }) async {
+    final data = await _publicPost('api/Auth/verify-email', {
+      'email': email,
+      'code': code,
+    });
+    final map = _map(data);
+    await _saveTokens('${map['accessToken']}', '${map['refreshToken']}');
+    return map;
+  }
+
+  /// Resend signup email verification code.
+  Future<void> resendEmailVerification(String email) => _publicPost(
+        'api/Auth/resend-verification',
+        {'email': email},
+      ).then((_) {});
 
   /// Send password reset verification code to email.
   Future<void> forgotPassword(String email) =>
@@ -1094,6 +1144,7 @@ class ApiService {
       throw ApiException(
         _message(data, 'Request failed.'),
         statusCode: response.statusCode,
+        data: data is Map ? _map(data) : null,
       );
     }
     return data;
@@ -1116,6 +1167,10 @@ class ApiService {
     final message = data['message'] ?? data['error'] ?? data['title'];
     if (message is List) {
       return message.map((e) => '$e').where((e) => e.isNotEmpty).join(' | ');
+    }
+    if (message is Map) {
+      final nested = message['message'] ?? message['error'];
+      if (nested != null && '$nested'.trim().isNotEmpty) return '$nested';
     }
     if (message != null && '$message'.trim().isNotEmpty) return '$message';
     return fallback;
