@@ -1471,6 +1471,8 @@ class AppController extends ChangeNotifier {
     if (!liveFresh) {
       latest = queried;
     }
+    // History screen reads the DB; Home must too or Live looks empty after restart.
+    await hydrateRecentGlucoseFromServer();
     _bumpTelemetry();
     // Flush any pending offline samples to server once connectivity is present
     if (history.isNotEmpty) {
@@ -1610,12 +1612,43 @@ class AppController extends ChangeNotifier {
   }
 
   /// True live BLE frame (not Excel-fill / backfill / replay), and not stale.
+  /// Uses backend warmup clock — SDK `sample.warmup` can stay true after the
+  /// 2h deadline and was blocking Home Live + DB uploads.
   bool _isFreshLiveSample(GlucoseSample sample) {
-    if (sample.value == null || sample.warmup || sample.abnormal) return false;
+    if (sample.value == null || sample.abnormal) return false;
+    if (sample.warmup && isSensorWarming) return false;
     final source = sample.source.toLowerCase();
     if (source == 'backfill' || source == 'replay') return false;
     final age = DateTime.now().difference(sample.measuredAt.toLocal()).abs();
     return age <= _liveFreshWindow;
+  }
+
+  /// Pull recent server rows (same source as History) into the Home buffer.
+  Future<void> hydrateRecentGlucoseFromServer({int hours = 6}) async {
+    if (!authenticated) return;
+    try {
+      final page = await api.getGlucoseHistory(
+        hours: hours,
+        page: 1,
+        pageSize: _maxUiHistory,
+      );
+      final rawItems = page['items'];
+      if (rawItems is! List || rawItems.isEmpty) return;
+      final mapped = <GlucoseSample>[];
+      for (final row in rawItems) {
+        if (row is! Map) continue;
+        final sample = sampleFromServerRow(Map<String, dynamic>.from(row));
+        if (sample != null && sample.value != null) mapped.add(sample);
+      }
+      if (mapped.isEmpty) return;
+      mapped.sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
+      _appendHistory(mapped);
+      final newest = mapped.last;
+      _setLatestIfNewer(newest, fromLive: false);
+      _bumpTelemetry();
+    } catch (e) {
+      debugPrint('[GLUCOSE] Home server hydrate failed: $e');
+    }
   }
 
   void _setLatestIfNewer(GlucoseSample? sample, {bool fromLive = false}) {
@@ -1853,8 +1886,8 @@ class AppController extends ChangeNotifier {
             (x) =>
                 x.wearId == currentWear.wearId &&
                 x.value != null &&
-                !x.warmup &&
                 !x.abnormal &&
+                (!x.warmup || !isSensorWarming) &&
                 !_isFreshLiveSample(x),
           )
           .toList();
@@ -1891,7 +1924,13 @@ class AppController extends ChangeNotifier {
         );
       }
       final valid = batch
-          .where((x) => x.value != null && !x.warmup && !x.abnormal)
+          .where(
+            (x) =>
+                x.value != null &&
+                !x.abnormal &&
+                // Upload once backend warmup ended even if SDK still flags warmup.
+                (!x.warmup || !isSensorWarming),
+          )
           .toList();
       debugPrint(
         '[GLUCOSE-UPLOAD] batch=${batch.length} valid=${valid.length} '

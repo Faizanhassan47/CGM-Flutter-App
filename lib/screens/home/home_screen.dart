@@ -49,7 +49,16 @@ class HomeScreen extends StatelessWidget {
               controller.connection == CgmConnectionState.connected;
           final heating = controller.isSensorWarming;
           final warmupEnd = controller.sensorWarmupEndAt;
-          final sample = (isConnected && !heating) ? controller.latest : null;
+          // Prefer live BLE, else last Home buffer row (includes server hydrate).
+          GlucoseSample? sample = controller.latest;
+          if (sample?.value == null) {
+            for (var i = controller.history.length - 1; i >= 0; i--) {
+              if (controller.history[i].value != null) {
+                sample = controller.history[i];
+                break;
+              }
+            }
+          }
           final sampleVal = sample?.value;
           final double? rawMg = sampleVal != null
               ? (sampleVal > 30 ? sampleVal : sampleVal * 18.0182)
@@ -62,31 +71,41 @@ class HomeScreen extends StatelessWidget {
           final highT = controller.targetHigh;
           final isUrgentLow = mg != null && mg < 55;
           final inTarget = mg != null && mg >= lowT && mg <= highT;
+          // Show last DB/BLE reading even while reconnecting or warming up.
+          final showReading = mg != null;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _graceBanner(),
-              if (heating && warmupEnd != null)
+              if (heating && warmupEnd != null) ...[
                 _WarmupCountdown(
                   endAt: warmupEnd,
                   onFinished: () => unawaited(controller.checkWarmupFinished()),
-                )
-              else ...[
-                _readingCard(
-                  context,
-                  mg: mg,
-                  isConnected: isConnected,
-                  inTarget: inTarget,
-                  isUrgentLow: isUrgentLow,
-                  isHigh: mg != null && mg > highT,
-                  scannedAt: controller.lastReadingDisplayAt,
                 ),
                 const SizedBox(height: 14),
-                _todayChart(context, lowT, highT, isConnected, isMmol),
-                const SizedBox(height: 14),
-                _statGrid(isConnected, lowT, highT),
               ],
+              _readingCard(
+                context,
+                mg: showReading ? mg : null,
+                isConnected: isConnected,
+                inTarget: inTarget,
+                isUrgentLow: isUrgentLow,
+                isHigh: mg != null && mg > highT,
+                scannedAt: controller.lastReadingDisplayAt ??
+                    sample?.measuredAt.toLocal(),
+              ),
+              const SizedBox(height: 14),
+              _todayChart(
+                context,
+                lowT,
+                highT,
+                isConnected || showReading,
+                isMmol,
+                warming: heating && !showReading,
+              ),
+              const SizedBox(height: 14),
+              _statGrid(isConnected || showReading, lowT, highT),
             ],
           );
         },
@@ -119,6 +138,7 @@ class HomeScreen extends StatelessWidget {
           color: AppTheme.primaryPurple,
           onRefresh: () async {
             await controller.refreshHistory();
+            await controller.hydrateRecentGlucoseFromServer();
             await controller.loadReports();
           },
           child: ListView(
@@ -360,12 +380,12 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
         ),
-        if (isConnected && mg != null) ...[
+        if (mg != null) ...[
           const SizedBox(height: 6),
           Text(
-            label,
+            !isConnected ? 'Last reading' : label,
             style: TextStyle(
-              color: chipColor,
+              color: !isConnected ? AppColors.textSecondary : chipColor,
               fontWeight: FontWeight.w700,
               fontSize: 13,
             ),
@@ -2383,15 +2403,15 @@ class _HomeChartState extends State<_HomeChart>
     _loadMarks();
   }
 
-  Future<void> _loadServerRange() async {
-    final hours = _hours;
-    if (hours <= 0) return;
-    final key = 'h$hours';
+  Future<void> _loadServerRange({bool forLive = false}) async {
+    final hours = forLive ? 6 : _hours;
+    if (!forLive && hours <= 0) return;
+    final key = forLive ? 'live6h' : 'h$hours';
     if (_serverKey == key || _loadingServer) return;
     _loadingServer = true;
     try {
       final page = await widget.api.getGlucoseHistory(
-        hours: hours,
+        hours: hours <= 0 ? 6 : hours,
         page: 1,
         pageSize: 120,
       );
@@ -2427,13 +2447,27 @@ class _HomeChartState extends State<_HomeChart>
   }
 
   List<GlucoseSample> _pointsForRange(BuildContext context) {
-    final source = range == 0 ? widget.samples : _serverSamples;
+    // Live tab: local BLE buffer first; fall back to server rows (same as History).
+    List<GlucoseSample> source;
+    if (range == 0) {
+      source = widget.samples;
+      final hasLocal = source.any((s) => s.value != null);
+      if (!hasLocal && _serverSamples.isNotEmpty) {
+        source = _serverSamples;
+      } else if (!hasLocal && !_loadingServer && _serverKey != 'live6h') {
+        unawaited(_loadServerRange(forLive: true));
+      }
+    } else {
+      source = _serverSamples;
+    }
     final last = source.isEmpty ? null : source.last;
     final live = widget.latest;
     final key =
         '$range|${source.length}|${last?.seq}|${last?.wearId}|${live?.seq}|${live?.value}|${widget.connected}|$_serverKey';
     if (_pointsCacheKey == key) return _cachedPoints;
-    final cutoff = DateTime.now().subtract(_span);
+    final cutoff = range == 0
+        ? DateTime.now().subtract(const Duration(hours: 6))
+        : DateTime.now().subtract(_span);
     final raw = <GlucoseSample>[];
     for (var i = source.length - 1; i >= 0; i--) {
       final s = source[i];
@@ -2544,7 +2578,7 @@ class _HomeChartState extends State<_HomeChart>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            height: widget.connected && values.isNotEmpty ? 250 : 190,
+            height: values.isNotEmpty || liveMg != null ? 250 : 190,
             child: widget.warming
                 ? const Center(
                     child: Padding(
@@ -2560,7 +2594,19 @@ class _HomeChartState extends State<_HomeChart>
                       ),
                     ),
                   )
-                : !widget.connected
+                : range == 0 && liveMg != null
+                ? GestureDetector(
+                    onTap: _noteSheet,
+                    child: _LiveGauge(
+                      mg: liveMg,
+                      text: shown(liveMg),
+                      unit: widget.mmol ? 'mmol/L' : 'mg/dL',
+                      low: widget.low,
+                      high: widget.high,
+                      trend: trend,
+                    ),
+                  )
+                : !widget.connected && values.isEmpty
                 ? GestureDetector(
                     onTap: widget.onConnect,
                     child: const Center(
@@ -2579,24 +2625,12 @@ class _HomeChartState extends State<_HomeChart>
                     ),
                   )
                 : range == 0
-                ? (liveMg != null
-                      ? GestureDetector(
-                          onTap: _noteSheet,
-                          child: _LiveGauge(
-                            mg: liveMg,
-                            text: shown(liveMg),
-                            unit: widget.mmol ? 'mmol/L' : 'mg/dL',
-                            low: widget.low,
-                            high: widget.high,
-                            trend: trend,
-                          ),
-                        )
-                      : const Center(
-                          child: Text(
-                            'Collecting live glucose readings',
-                            style: TextStyle(color: AppColors.textSecondary),
-                          ),
-                        ))
+                ? const Center(
+                    child: Text(
+                      'Collecting live glucose readings',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  )
                 : values.length < 2
                 ? const Center(
                     child: Text(
