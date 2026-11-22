@@ -1846,17 +1846,31 @@ class AppController extends ChangeNotifier {
     final lastSeq = prefs.getInt(key) ?? -1;
     // Fresh Home-Live frames: POST immediately (bypass lastSeq / Excel-fill cursor).
     if (fromLive) {
-      final live = samples
-          .where((x) => x.wearId == currentWear.wearId && _isFreshLiveSample(x))
-          .toList();
+      final wearSamples =
+          samples.where((x) => x.wearId == currentWear.wearId).toList();
+      final live = wearSamples.where(_isFreshLiveSample).toList();
+      for (final sample in wearSamples) {
+        if (_isFreshLiveSample(sample)) continue;
+        debugPrint(
+          '[GLUCOSE-LIVE] skip seq=${sample.seq} '
+          'warmup=${sample.warmup} backendWarming=$isSensorWarming '
+          'abnormal=${sample.abnormal} source=${sample.source} '
+          'value=${sample.value}',
+        );
+      }
       for (final sample in live) {
         final mg = displayMgDl(sample);
-        if (mg == null) continue;
+        if (mg == null) {
+          debugPrint(
+            '[GLUCOSE-LIVE] skip seq=${sample.seq} invalid mg from value=${sample.value}',
+          );
+          continue;
+        }
         final measurementTime = _exactMeasurementTimeUtc(sample);
         final receivedAt = DateTime.now().toUtc().toIso8601String();
         debugPrint(
-          '[GLUCOSE-LIVE] seq=${sample.seq} mg=$mg time=$measurementTime '
-          'source=${sample.source}',
+          '[GLUCOSE-LIVE] saving seq=${sample.seq} mg=$mg '
+          'time=$measurementTime sensor=${binding.sensorId}',
         );
         try {
           await api.saveMeasurement(
@@ -1874,9 +1888,12 @@ class AppController extends ChangeNotifier {
           // and real 0xB0 resumes at a lower seq (e.g. 134).
           final seq = sample.seq & 0xffff;
           if (seq > lastSeq) await prefs.setInt(key, seq);
+          debugPrint(
+            '[GLUCOSE-LIVE] OK seq=$seq mg=$mg sensor=${binding.sensorId}',
+          );
           continue;
         } catch (e) {
-          debugPrint('[GLUCOSE-LIVE] direct save failed, queueing: $e');
+          debugPrint('[GLUCOSE-LIVE] FAIL seq=${sample.seq} mg=$mg → queue: $e');
           await _enqueueUploadRows(binding.sensorId, [sample]);
         }
       }

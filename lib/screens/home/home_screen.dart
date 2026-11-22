@@ -2401,6 +2401,29 @@ class _HomeChartState extends State<_HomeChart>
       _draw.forward();
     }
     _loadMarks();
+    // Never fetch from build() — that caused wrong-build-scope crashes.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _ensureLiveServerFallback();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final hadLocal = oldWidget.samples.any((s) => s.value != null);
+    final hasLocal = widget.samples.any((s) => s.value != null);
+    if (hadLocal && !hasLocal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ensureLiveServerFallback();
+      });
+    }
+  }
+
+  void _ensureLiveServerFallback() {
+    if (range != 0) return;
+    final hasLocal = widget.samples.any((s) => s.value != null);
+    if (hasLocal || _loadingServer || _serverKey == 'live6h') return;
+    unawaited(_loadServerRange(forLive: true));
   }
 
   Future<void> _loadServerRange({bool forLive = false}) async {
@@ -2447,16 +2470,13 @@ class _HomeChartState extends State<_HomeChart>
   }
 
   List<GlucoseSample> _pointsForRange(BuildContext context) {
-    // Live tab: local BLE buffer first; fall back to server rows (same as History).
-    List<GlucoseSample> source;
+    // Live tab: local BLE buffer first; fall back to already-fetched server rows.
+    final List<GlucoseSample> source;
     if (range == 0) {
-      source = widget.samples;
-      final hasLocal = source.any((s) => s.value != null);
-      if (!hasLocal && _serverSamples.isNotEmpty) {
-        source = _serverSamples;
-      } else if (!hasLocal && !_loadingServer && _serverKey != 'live6h') {
-        unawaited(_loadServerRange(forLive: true));
-      }
+      final hasLocal = widget.samples.any((s) => s.value != null);
+      source = (!hasLocal && _serverSamples.isNotEmpty)
+          ? _serverSamples
+          : widget.samples;
     } else {
       source = _serverSamples;
     }
