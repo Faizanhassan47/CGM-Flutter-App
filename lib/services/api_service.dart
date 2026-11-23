@@ -263,9 +263,8 @@ class ApiService {
     return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
-  /// Register a new patient account.
-  /// Email/password signup returns [requiresEmailVerification] and no tokens
-  /// until [verifyEmail] succeeds.
+  /// Start email/password signup (sends OTP). The Users row is created only
+  /// after [verifyEmail] succeeds — no auth tokens until then.
   Future<Map<String, dynamic>> register(
     String fullName,
     String email,
