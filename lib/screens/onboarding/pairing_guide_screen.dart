@@ -34,12 +34,21 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
     super.dispose();
   }
 
+  void _goPage(int page) {
+    if (UiPerf.skipDecorativeMotion(context)) {
+      _controller.jumpToPage(page);
+      return;
+    }
+    _controller.animateToPage(
+      page,
+      duration: UiPerf.pageTransition(context),
+      curve: Curves.easeOut,
+    );
+  }
+
   void _next() {
     if (_page < _pageCount - 1) {
-      _controller.nextPage(
-        duration: UiPerf.pageTransition(context),
-        curve: Curves.easeOut,
-      );
+      _goPage(_page + 1);
     } else {
       Navigator.of(context).pop(true);
     }
@@ -47,7 +56,6 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final transition = UiPerf.pageTransition(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7F9),
       appBar: AppBar(
@@ -57,10 +65,7 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1A1A1A)),
           onPressed: () {
             if (_page > 0) {
-              _controller.previousPage(
-                duration: transition,
-                curve: Curves.easeOut,
-              );
+              _goPage(_page - 1);
             } else {
               Navigator.of(context).pop(false);
             }

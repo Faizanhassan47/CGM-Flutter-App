@@ -51,10 +51,12 @@ class UiPerf {
     return preferReducedMotion(context) || isLowEndLayout(context);
   }
 
-  /// Page / sheet transitions: instant on low-end, short ease elsewhere.
+  /// Page / sheet transitions: near-instant on low-end, short ease elsewhere.
+  /// Never returns [Duration.zero] — PageController.animateToPage asserts
+  /// `duration > Duration.zero`.
   static Duration pageTransition(BuildContext context) {
     return skipDecorativeMotion(context)
-        ? Duration.zero
+        ? const Duration(milliseconds: 1)
         : const Duration(milliseconds: 220);
   }
 
