@@ -35,13 +35,14 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
   }
 
   void _goPage(int page) {
-    if (UiPerf.skipDecorativeMotion(context)) {
-      _controller.jumpToPage(page);
-      return;
-    }
+    if (page < 0 || page >= _pageCount || page == _page) return;
+    setState(() => _page = page);
+    // Always use a positive duration — PageController rejects Duration.zero,
+    // and jumpToPage was a no-op on some devices after the low-end opt path.
+    if (!_controller.hasClients) return;
     _controller.animateToPage(
       page,
-      duration: UiPerf.pageTransition(context),
+      duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
   }

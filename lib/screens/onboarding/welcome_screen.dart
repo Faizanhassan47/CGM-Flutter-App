@@ -74,14 +74,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   void _next() {
     if (_index < _pages.length - 1) {
-      if (UiPerf.skipDecorativeMotion(context)) {
-        _page.jumpToPage(_index + 1);
-      } else {
-        _page.nextPage(
-          duration: UiPerf.pageTransition(context),
-          curve: Curves.easeOut,
-        );
-      }
+      final next = _index + 1;
+      setState(() => _index = next);
+      if (!_page.hasClients) return;
+      _page.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
     } else {
       widget.onDone();
     }
