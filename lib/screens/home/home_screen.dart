@@ -483,63 +483,49 @@ class HomeScreen extends StatelessWidget {
         statusNote = h > 0 ? '${h}h ${m}m left' : '$mins min left';
       }
     }
-    // Column+Rows avoids nested GridView layout cost inside the parent ListView.
-    return Column(
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.55,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _stat(
-                Icons.medication_outlined,
-                AppColors.primarySoft,
-                AppColors.primary,
-                'Average',
-                avg == null ? '--' : '$avg',
-                'mg/dL',
-                false,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _stat(
-                Icons.restaurant_outlined,
-                AppColors.primary,
-                Colors.white,
-                'Time in range',
-                tir == null ? '--' : '$tir%',
-                'last 12 hours',
-                true,
-              ),
-            ),
-          ],
+        _stat(
+          Icons.medication_outlined,
+          AppColors.primarySoft,
+          AppColors.primary,
+          'Average',
+          avg == null ? '--' : '$avg',
+          'mg/dL',
+          false,
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _stat(
-                Icons.touch_app_outlined,
-                AppColors.primarySoft,
-                AppColors.primary,
-                'Sensor life',
-                life,
-                lifeNote,
-                false,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _stat(
-                Icons.bolt,
-                AppColors.primarySoft,
-                AppColors.success,
-                'Status',
-                status,
-                statusNote,
-                false,
-              ),
-            ),
-          ],
+        _stat(
+          Icons.restaurant_outlined,
+          AppColors.primary,
+          Colors.white,
+          'Time in range',
+          tir == null ? '--' : '$tir%',
+          'last 12 hours',
+          true,
+        ),
+        _stat(
+          Icons.touch_app_outlined,
+          AppColors.primarySoft,
+          AppColors.primary,
+          'Sensor life',
+          life,
+          lifeNote,
+          false,
+        ),
+        _stat(
+          Icons.bolt,
+          AppColors.primarySoft,
+          AppColors.success,
+          'Status',
+          status,
+          statusNote,
+          false,
         ),
       ],
     );
@@ -1799,28 +1785,17 @@ class _WarmupCountdownState extends State<_WarmupCountdown>
   static const _totalWarmup = Duration(hours: 2);
   Timer? _tick;
   bool _finishedNotified = false;
-  bool _tickConfigured = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_tickConfigured) return;
-    _tickConfigured = true;
     _startTicker();
   }
 
   void _startTicker() {
     _tick?.cancel();
-    // 1 Hz on capable phones; slower on low-end to cut rebuild/GPU cost.
-    final seconds =
-        _tickConfigured && UiPerf.isLowEndLayout(context) ? 5 : 1;
-    _tick = Timer.periodic(Duration(seconds: seconds), (_) {
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {});
       _maybeFinish();
@@ -1883,23 +1858,19 @@ class _WarmupCountdownState extends State<_WarmupCountdown>
         border: Border.all(
           color: AppColors.primaryBorder.withValues(alpha: 0.65),
         ),
-        boxShadow: UiPerf.softShadow(
-          context,
-          blurRadius: 24,
-          offset: const Offset(0, 10),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF8F6), AppColors.primarySoft, Color(0xFFFFFFFF)],
+          stops: [0.0, 0.45, 1.0],
         ),
-        gradient: lowEnd
-            ? null
-            : const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFFFF8F6),
-                  AppColors.primarySoft,
-                  Color(0xFFFFFFFF),
-                ],
-                stops: [0.0, 0.45, 1.0],
-              ),
       ),
       child: Column(
         children: [
@@ -1934,14 +1905,12 @@ class _WarmupCountdownState extends State<_WarmupCountdown>
           SizedBox(
             width: lowEnd ? 200 : 228,
             height: lowEnd ? 200 : 228,
-            child: RepaintBoundary(
-              child: CustomPaint(
+            child: CustomPaint(
               painter: _PomodoroRingPainter(
                 progress: remainingFraction.toDouble(),
                 trackColor: AppColors.primaryBorder.withValues(alpha: 0.35),
                 progressColor: AppColors.primary,
                 glowColor: AppColors.primary.withValues(alpha: 0.18),
-                drawGlow: !lowEnd && !UiPerf.skipDecorativeMotion(context),
               ),
               child: Center(
                 child: Column(
@@ -1970,7 +1939,6 @@ class _WarmupCountdownState extends State<_WarmupCountdown>
                   ],
                 ),
               ),
-            ),
             ),
           ),
           SizedBox(height: lowEnd ? 16 : 20),
@@ -2005,14 +1973,12 @@ class _PomodoroRingPainter extends CustomPainter {
     required this.trackColor,
     required this.progressColor,
     required this.glowColor,
-    this.drawGlow = true,
   });
 
   final double progress;
   final Color trackColor;
   final Color progressColor;
   final Color glowColor;
-  final bool drawGlow;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2025,18 +1991,17 @@ class _PomodoroRingPainter extends CustomPainter {
       ..color = trackColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
+
+    final glow = Paint()
+      ..color = glowColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke + 10
       ..strokeCap = StrokeCap.round
-      ..isAntiAlias = drawGlow;
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
 
     final arc = Paint()
-      ..color = progressColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = drawGlow;
-
-    if (drawGlow) {
-      arc.shader = SweepGradient(
+      ..shader = SweepGradient(
         startAngle: 0,
         endAngle: math.pi * 2,
         colors: [
@@ -2045,27 +2010,21 @@ class _PomodoroRingPainter extends CustomPainter {
           AppColors.primaryDark,
         ],
         transform: const GradientRotation(-math.pi / 2),
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    }
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round;
 
     canvas.drawCircle(center, radius, track);
     final sweep = (math.pi * 2) * progress.clamp(0.0, 1.0);
     if (sweep > 0.001) {
-      if (drawGlow) {
-        final glow = Paint()
-          ..color = glowColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke + 10
-          ..strokeCap = StrokeCap.round
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          start,
-          sweep,
-          false,
-          glow,
-        );
-      }
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        start,
+        sweep,
+        false,
+        glow,
+      );
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         start,
@@ -2080,8 +2039,7 @@ class _PomodoroRingPainter extends CustomPainter {
   bool shouldRepaint(covariant _PomodoroRingPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.progressColor != progressColor ||
-        oldDelegate.trackColor != trackColor ||
-        oldDelegate.drawGlow != drawGlow;
+        oldDelegate.trackColor != trackColor;
   }
 }
 
@@ -2424,33 +2382,29 @@ class _HomeChartState extends State<_HomeChart>
   };
 
   late final AnimationController _draw;
-  bool _drawConfigured = false;
 
   @override
   void initState() {
     super.initState();
+    final reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     _draw = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: Duration(milliseconds: reduceMotion ? 0 : 280),
     );
+    if (reduceMotion) {
+      _draw.value = 1;
+    } else {
+      _draw.forward();
+    }
     _loadMarks();
     // Never fetch from build() — that caused wrong-build-scope crashes.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _ensureLiveServerFallback();
     });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_drawConfigured) return;
-    _drawConfigured = true;
-    if (UiPerf.skipDecorativeMotion(context)) {
-      _draw.duration = Duration.zero;
-      _draw.value = 1;
-    } else {
-      _draw.forward();
-    }
   }
 
   @override
