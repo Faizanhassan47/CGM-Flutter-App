@@ -50,4 +50,27 @@ class UiPerf {
   static bool skipDecorativeMotion(BuildContext context) {
     return preferReducedMotion(context) || isLowEndLayout(context);
   }
+
+  /// Page / sheet transitions: instant on low-end, short ease elsewhere.
+  static Duration pageTransition(BuildContext context) {
+    return skipDecorativeMotion(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
+  }
+
+  /// Prefer cheaper image filtering on constrained devices.
+  static FilterQuality imageFilter(BuildContext context) {
+    return isLowEndLayout(context) ? FilterQuality.low : FilterQuality.medium;
+  }
+
+  /// Drop expensive blurred shadows on low-end; keep a light border instead.
+  static List<BoxShadow>? softShadow(
+    BuildContext context, {
+    Color color = const Color(0x14000000),
+    double blurRadius = 16,
+    Offset offset = const Offset(0, 8),
+  }) {
+    if (isLowEndLayout(context)) return null;
+    return [BoxShadow(color: color, blurRadius: blurRadius, offset: offset)];
+  }
 }

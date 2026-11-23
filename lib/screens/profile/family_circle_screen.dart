@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/page_top_bar.dart';
@@ -730,13 +731,12 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
               end: Alignment.bottomRight,
             ),
             borderRadius: AppRadii.r22,
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primaryPurple.withValues(alpha: 0.25),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            boxShadow: UiPerf.softShadow(
+              context,
+              color: AppTheme.primaryPurple.withValues(alpha: 0.25),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -999,13 +999,12 @@ class _FamilyCircleScreenState extends State<FamilyCircleScreen> {
                   color: AppColors.surface,
                   borderRadius: AppRadii.r18,
                   border: Border.all(color: AppPalette.hexFFECEAF4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.black.withValues(alpha: 0.02),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  boxShadow: UiPerf.softShadow(
+                    context,
+                    color: AppColors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

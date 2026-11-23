@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cgm_sdk/cgm_sdk.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/pill_button.dart';
 import 'system_self_check.dart';
@@ -22,24 +23,46 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
   bool showCamera = false;
   bool barcodeHandled = false;
   bool connecting = false;
-  late final AnimationController _connectPulse;
+  AnimationController? _connectPulse;
+  bool _pulseActive = false;
 
   @override
   void initState() {
     super.initState();
     selectedType = widget.controller.selectedDeviceType;
     showCamera = true;
-    _connectPulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat();
   }
 
   @override
   void dispose() {
-    _connectPulse.dispose();
+    _connectPulse?.dispose();
     qrController.dispose();
     super.dispose();
+  }
+
+  void _setConnecting(bool value) {
+    if (connecting == value) return;
+    setState(() => connecting = value);
+    _syncPulse(value);
+  }
+
+  void _syncPulse(bool connectingNow) {
+    final skip = !mounted || UiPerf.skipDecorativeMotion(context);
+    if (!connectingNow || skip) {
+      if (_pulseActive) {
+        _connectPulse?.stop();
+        _pulseActive = false;
+      }
+      return;
+    }
+    _connectPulse ??= AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    if (!_pulseActive) {
+      _connectPulse!.repeat();
+      _pulseActive = true;
+    }
   }
 
   Future<void> _onConnectDevice() async {
@@ -68,7 +91,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
     }
     if (connecting) return;
 
-    setState(() => connecting = true);
+    _setConnecting(true);
     try {
       await widget.controller.bindQr(code);
       if (!mounted) return;
@@ -76,12 +99,14 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
         connecting = false;
         currentStep = 3;
       });
+      _syncPulse(false);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         connecting = false;
         barcodeHandled = false;
       });
+      _syncPulse(false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Binding error: $e')));
@@ -90,110 +115,127 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Avoid ListenableBuilder on scanner / connecting — controller ticks
+    // remount camera and waste frames on low-end devices.
+    if (connecting) {
+      return Scaffold(
+        backgroundColor: AppColors.surface,
+        appBar: _buildAppBar(isStepTwo: false),
+        body: _buildConnecting(),
+      );
+    }
+    if (currentStep == 0) {
+      return Scaffold(
+        backgroundColor: AppColors.surface,
+        appBar: _buildAppBar(isStepTwo: false),
+        body: _buildDirectScanner(),
+      );
+    }
+
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
         final isStepTwo = currentStep == 2;
         return Scaffold(
           backgroundColor: AppColors.surface,
-          appBar: AppBar(
-            backgroundColor: AppColors.surface,
-            elevation: 0,
-            leading: IconButton(
-              icon: Icon(
-                connecting || isStepTwo ? Icons.close : Icons.arrow_back,
-                color: AppTheme.darkPurple,
-              ),
-              onPressed: connecting
-                  ? null
-                  : () {
-                      if (currentStep > 1) {
-                        setState(() => currentStep--);
-                      } else {
-                        Navigator.of(context).pop();
-                      }
-                    },
-            ),
-            title: Text(
-              connecting
-                  ? 'Connecting'
-                  : currentStep == 0
-                  ? 'Scan sensor'
-                  : isStepTwo
-                  ? 'Device Pairing'
-                  : 'Device Setup',
-              style: const TextStyle(
-                color: AppTheme.darkPurple,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-            actions: [
-              if (isStepTwo)
-                Padding(
-                  padding: const EdgeInsets.only(right: 20),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(
-                        Icons.bluetooth,
-                        size: 16,
-                        color: AppTheme.primaryPurple,
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'BLE',
-                        style: TextStyle(
-                          color: AppTheme.primaryPurple,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else if (currentStep > 0)
-                Padding(
-                  padding: const EdgeInsets.only(right: 20),
-                  child: Center(
-                    child: Text(
-                      '$currentStep of 3',
-                      style: const TextStyle(
-                        color: AppTheme.darkPurple,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
+          appBar: _buildAppBar(isStepTwo: isStepTwo),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
                     ),
+                    child: currentStep == 1
+                        ? _buildStepOne()
+                        : currentStep == 2
+                        ? _buildStepTwo()
+                        : _buildStepThree(),
                   ),
                 ),
-            ],
+                if (currentStep == 1) _buildBottomStepper(),
+              ],
+            ),
           ),
-          body: connecting
-              ? _buildConnecting()
-              : currentStep == 0
-              ? _buildDirectScanner()
-              : SafeArea(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                          child: currentStep == 1
-                              ? _buildStepOne()
-                              : currentStep == 2
-                              ? _buildStepTwo()
-                              : _buildStepThree(),
-                        ),
-                      ),
-                      if (currentStep == 1) _buildBottomStepper(),
-                    ],
-                  ),
-                ),
         );
       },
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar({required bool isStepTwo}) {
+    return AppBar(
+      backgroundColor: AppColors.surface,
+      elevation: 0,
+      leading: IconButton(
+        icon: Icon(
+          connecting || isStepTwo ? Icons.close : Icons.arrow_back,
+          color: AppTheme.darkPurple,
+        ),
+        onPressed: connecting
+            ? null
+            : () {
+                if (currentStep > 1) {
+                  setState(() => currentStep--);
+                } else {
+                  Navigator.of(context).pop();
+                }
+              },
+      ),
+      title: Text(
+        connecting
+            ? 'Connecting'
+            : currentStep == 0
+            ? 'Scan sensor'
+            : isStepTwo
+            ? 'Device Pairing'
+            : 'Device Setup',
+        style: const TextStyle(
+          color: AppTheme.darkPurple,
+          fontWeight: FontWeight.w700,
+          fontSize: 18,
+        ),
+      ),
+      actions: [
+        if (isStepTwo)
+          const Padding(
+            padding: EdgeInsets.only(right: 20),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.bluetooth,
+                  size: 16,
+                  color: AppTheme.primaryPurple,
+                ),
+                SizedBox(width: 4),
+                Text(
+                  'BLE',
+                  style: TextStyle(
+                    color: AppTheme.primaryPurple,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (currentStep > 0)
+          Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: Center(
+              child: Text(
+                '$currentStep of 3',
+                style: const TextStyle(
+                  color: AppTheme.darkPurple,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -667,7 +709,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
         .replaceAll('-', '')
         .toUpperCase();
     final payload = '1,CGM-$dev,-5,2.8632,-0.04,4,4,6,6,9,9';
-    setState(() => connecting = true);
+    _setConnecting(true);
     try {
       await widget.controller.bindQr(payload);
       if (!mounted) return;
@@ -675,9 +717,10 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
         connecting = false;
         currentStep = 3;
       });
+      _syncPulse(false);
     } catch (e) {
       if (!mounted) return;
-      setState(() => connecting = false);
+      _setConnecting(false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to connect: $e')));
@@ -685,6 +728,23 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
   }
 
   Widget _buildConnecting() {
+    final skipMotion = UiPerf.skipDecorativeMotion(context);
+    final pulse = _connectPulse;
+    final icon = Container(
+      width: 96,
+      height: 96,
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppTheme.primaryPurple, width: 2),
+      ),
+      child: const Icon(
+        Icons.bluetooth_searching_rounded,
+        color: AppTheme.primaryPurple,
+        size: 44,
+      ),
+    );
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -694,50 +754,39 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
             SizedBox(
               width: 220,
               height: 220,
-              child: AnimatedBuilder(
-                animation: _connectPulse,
-                builder: (context, child) {
-                  final t = _connectPulse.value;
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      for (var i = 0; i < 3; i++)
-                        Transform.scale(
-                          scale: 0.55 + ((t + i / 3) % 1.0) * 0.7,
-                          child: Opacity(
-                            opacity: (1 - ((t + i / 3) % 1.0)) * 0.45,
-                            child: Container(
-                              width: 180,
-                              height: 180,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppTheme.primaryPurple,
-                                  width: 2,
+              child: skipMotion || pulse == null
+                  ? Center(child: icon)
+                  : AnimatedBuilder(
+                      animation: pulse,
+                      builder: (context, child) {
+                        final t = pulse.value;
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            for (var i = 0; i < 3; i++)
+                              Transform.scale(
+                                scale: 0.55 + ((t + i / 3) % 1.0) * 0.7,
+                                child: Opacity(
+                                  opacity: (1 - ((t + i / 3) % 1.0)) * 0.45,
+                                  child: Container(
+                                    width: 180,
+                                    height: 180,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppTheme.primaryPurple,
+                                        width: 2,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                        ),
-                      child!,
-                    ],
-                  );
-                },
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.primaryPurple, width: 2),
-                  ),
-                  child: const Icon(
-                    Icons.bluetooth_searching_rounded,
-                    color: AppTheme.primaryPurple,
-                    size: 44,
-                  ),
-                ),
-              ),
+                            child!,
+                          ],
+                        );
+                      },
+                      child: icon,
+                    ),
             ),
             const SizedBox(height: 28),
             const Text(
@@ -780,15 +829,17 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: MobileScanner(
-            onDetect: (capture) {
-              if (barcodeHandled || capture.barcodes.isEmpty) return;
-              final val = capture.barcodes.first.rawValue;
-              if (val == null || val.trim().isEmpty) return;
-              barcodeHandled = true;
-              qrController.text = val;
-              _onBindQr();
-            },
+          child: RepaintBoundary(
+            child: MobileScanner(
+              onDetect: (capture) {
+                if (barcodeHandled || capture.barcodes.isEmpty) return;
+                final val = capture.barcodes.first.rawValue;
+                if (val == null || val.trim().isEmpty) return;
+                barcodeHandled = true;
+                qrController.text = val;
+                _onBindQr();
+              },
+            ),
           ),
         ),
         Padding(
@@ -1043,6 +1094,9 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen>
               imagePath,
               height: 88,
               fit: BoxFit.contain,
+              cacheHeight: UiPerf.cachePx(context, 88),
+              filterQuality: UiPerf.imageFilter(context),
+              gaplessPlayback: true,
               errorBuilder: (_, __, ___) => const Icon(
                 Icons.memory,
                 size: 70,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/app_animations.dart';
 import '../../widgets/page_top_bar.dart';
@@ -29,28 +30,19 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild on tab switches only — telemetry ticks update the sensor card.
     final tabListenable = activeTabListenable;
     if (tabListenable != null) {
       return ValueListenableBuilder<int>(
         valueListenable: tabListenable,
-        builder: (context, active, _) {
-          final tabActive = active == tabIndex;
-          if (!tabActive) return _buildBody(context);
-          return ValueListenableBuilder<int>(
-            valueListenable: controller.telemetryRevision,
-            builder: (context, _, __) => _buildBody(context),
-          );
-        },
+        builder: (context, active, _) =>
+            _buildBody(context, liveTelemetry: active == tabIndex),
       );
     }
-    if (!isActive) return _buildBody(context);
-    return ValueListenableBuilder<int>(
-      valueListenable: controller.telemetryRevision,
-      builder: (context, _, __) => _buildBody(context),
-    );
+    return _buildBody(context, liveTelemetry: isActive);
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(BuildContext context, {required bool liveTelemetry}) {
     final isConnected = controller.connection == CgmConnectionState.connected;
     final statusText = isConnected ? 'Connected' : 'Disconnected';
 
@@ -76,60 +68,24 @@ class ProfileScreen extends StatelessWidget {
     final firmware =
         controller.activeDevice?['firmwareVersion']?.toString() ?? 'A100';
 
-    // Sensor days calculations
-    int remainingDays = 14;
-    int dayPassed = 1;
+    var remainingDays = 14;
     if (controller.deviceStatus?.remainingDays != null &&
         controller.deviceStatus!.remainingDays > 0) {
       remainingDays = controller.deviceStatus!.remainingDays;
-      dayPassed = (14 - remainingDays).clamp(1, 14);
     } else if (controller.wear?.activatedAt != null) {
-      final daysDiff = DateTime.now()
-          .difference(controller.wear!.activatedAt)
-          .inDays;
-      dayPassed = (daysDiff + 1).clamp(1, 14);
+      final dayPassed = (DateTime.now()
+                  .difference(controller.wear!.activatedAt)
+                  .inDays +
+              1)
+          .clamp(1, 14);
       remainingDays = (14 - dayPassed).clamp(0, 14);
-    } else if (controller.activeSensor?['startedAt'] != null) {
-      final started = DateTime.tryParse(
-        controller.activeSensor!['startedAt'].toString(),
-      );
-      if (started != null) {
-        final daysDiff = DateTime.now().difference(started).inDays;
-        dayPassed = (daysDiff + 1).clamp(1, 14);
-        remainingDays = (14 - dayPassed).clamp(0, 14);
-      }
     }
-    final wearRatio = (dayPassed / 14).clamp(0.0, 1.0);
-
-    // Battery calculations
-    final batteryMv =
-        controller.deviceStatus?.batteryMv ??
-        (controller.activeDevice?['batteryVoltageMv'] != null
-            ? int.tryParse(
-                controller.activeDevice!['batteryVoltageMv'].toString(),
-              )
-            : 3000);
-    final batteryPct = controller.activeDevice?['batteryPercentage'] != null
-        ? (controller.activeDevice!['batteryPercentage'] as num).toInt()
-        : (batteryMv != null
-              ? (((batteryMv - 2600) / (3000 - 2600)) * 100)
-                    .clamp(0, 100)
-                    .round()
-              : 95);
-    final batteryDisplay = batteryMv != null
-        ? '$batteryMv mV ($batteryPct%)'
-        : '$batteryPct%';
-    final batteryRatio = (batteryPct / 100.0).clamp(0.0, 1.0);
-
-    // Temperature calculations
-    final tempVal = controller.deviceStatus?.temperature ?? 32.5;
-    final tempDisplay = '${tempVal.toStringAsFixed(1)}°C (Normal)';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: ListView(
-          cacheExtent: 120,
+          cacheExtent: UiPerf.listCacheExtent(context),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           children: [
             // Header
@@ -145,6 +101,7 @@ class ProfileScreen extends StatelessWidget {
                 Navigator.of(context).push(
                   SmoothPageRoute(
                     page: PersonalInfoScreen(controller: controller),
+                    duration: UiPerf.pageTransition(context),
                   ),
                 );
               },
@@ -161,35 +118,9 @@ class ProfileScreen extends StatelessWidget {
                       children: [
                         GestureDetector(
                           onTap: () => _pickAndUploadAvatar(context),
-                          child: Container(
-                            width: 58,
-                            height: 58,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.primaryPurple,
-                                width: 2,
-                              ),
-                              image:
-                                  controller.profilePictureUrl != null &&
-                                      controller.profilePictureUrl!.isNotEmpty
-                                  ? DecorationImage(
-                                      image: NetworkImage(
-                                        controller.profilePictureUrl!,
-                                      ),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                            ),
-                            child:
-                                controller.profilePictureUrl == null ||
-                                    controller.profilePictureUrl!.isEmpty
-                                ? const Icon(
-                                    Icons.person_outline_rounded,
-                                    color: AppTheme.primaryPurple,
-                                    size: 34,
-                                  )
-                                : null,
+                          child: _CachedAvatar(
+                            url: controller.profilePictureUrl,
+                            size: 58,
                           ),
                         ),
                         Positioned(
@@ -361,143 +292,22 @@ class ProfileScreen extends StatelessWidget {
             ),
             if (isConnected) ...[
               const SizedBox(height: 16),
-
-              // 3. Sensor Hardware Telemetry Card
-              Container(
-                padding: AppInsets.all18,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: AppRadii.r22,
-                  border: Border.all(color: AppPalette.hexFFEFEBF6, width: 1.2),
+              // Live BLE fields only — avoid rebuilding the whole profile on ticks.
+              if (liveTelemetry)
+                ValueListenableBuilder<int>(
+                  valueListenable: controller.telemetryRevision,
+                  builder: (context, _, __) => _sensorTelemetryCard(
+                    deviceModel: deviceModel,
+                    firmware: firmware,
+                    serialNumber: serialNumber,
+                  ),
+                )
+              else
+                _sensorTelemetryCard(
+                  deviceModel: deviceModel,
+                  firmware: firmware,
+                  serialNumber: serialNumber,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: AppInsets.all6,
-                          child: const Icon(
-                            Icons.memory_rounded,
-                            color: AppTheme.primaryPurple,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'Sensor Hardware Telemetry',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.darkPurple,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Live BLE diagnostics from on-skin sensor',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: AppTheme.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppPalette.hexFFE6F9EE,
-                            borderRadius: AppRadii.r10,
-                          ),
-                          child: const Text(
-                            'ACTIVE',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: AppPalette.hexFF10B981,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-
-                    // 2x2 Telemetry Grid
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTelemetryCell(
-                            icon: Icons.battery_charging_full_rounded,
-                            iconColor: AppPalette.hexFF10B981,
-                            label: 'Battery Voltage',
-                            value: batteryDisplay,
-                            hasProgressBar: true,
-                            progressRatio: batteryRatio,
-                            progressColor: AppPalette.hexFF10B981,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTelemetryCell(
-                            icon: Icons.thermostat_rounded,
-                            iconColor: AppPalette.hexFFF97316,
-                            label: 'Probe Temp',
-                            value: tempDisplay,
-                            caption: 'Skin Surface Norm',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTelemetryCell(
-                            icon: Icons.access_time_filled_rounded,
-                            iconColor: AppTheme.primaryPurple,
-                            label: 'Sensor Wear',
-                            value:
-                                'Day $dayPassed of 14 • $remainingDays days left',
-                            hasProgressBar: true,
-                            progressRatio: wearRatio,
-                            progressColor: AppTheme.primaryPurple,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildTelemetryCell(
-                            icon: Icons.wifi,
-                            iconColor: AppPalette.hexFF00B2E2,
-                            label: 'Signal (RSSI)',
-                            value: '-58 dBm (Strong BLE)',
-                            caption: 'GATT Connected',
-                            captionColor: AppPalette.hexFF10B981,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(color: AppPalette.hexFFF2EEF8),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Model:  $deviceModel   •   Firmware: $firmware   •   SN: $serialNumber',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
             const SizedBox(height: 20),
 
@@ -619,6 +429,186 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 24),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _sensorTelemetryCard({
+    required String deviceModel,
+    required String firmware,
+    required String serialNumber,
+  }) {
+    int remainingDays = 14;
+    int dayPassed = 1;
+    if (controller.deviceStatus?.remainingDays != null &&
+        controller.deviceStatus!.remainingDays > 0) {
+      remainingDays = controller.deviceStatus!.remainingDays;
+      dayPassed = (14 - remainingDays).clamp(1, 14);
+    } else if (controller.wear?.activatedAt != null) {
+      final daysDiff =
+          DateTime.now().difference(controller.wear!.activatedAt).inDays;
+      dayPassed = (daysDiff + 1).clamp(1, 14);
+      remainingDays = (14 - dayPassed).clamp(0, 14);
+    } else if (controller.activeSensor?['startedAt'] != null) {
+      final started = DateTime.tryParse(
+        controller.activeSensor!['startedAt'].toString(),
+      );
+      if (started != null) {
+        final daysDiff = DateTime.now().difference(started).inDays;
+        dayPassed = (daysDiff + 1).clamp(1, 14);
+        remainingDays = (14 - dayPassed).clamp(0, 14);
+      }
+    }
+    final wearRatio = (dayPassed / 14).clamp(0.0, 1.0);
+
+    final batteryMv =
+        controller.deviceStatus?.batteryMv ??
+        (controller.activeDevice?['batteryVoltageMv'] != null
+            ? int.tryParse(
+                controller.activeDevice!['batteryVoltageMv'].toString(),
+              )
+            : 3000);
+    final batteryPct = controller.activeDevice?['batteryPercentage'] != null
+        ? (controller.activeDevice!['batteryPercentage'] as num).toInt()
+        : (batteryMv != null
+              ? (((batteryMv - 2600) / (3000 - 2600)) * 100)
+                    .clamp(0, 100)
+                    .round()
+              : 95);
+    final batteryDisplay = batteryMv != null
+        ? '$batteryMv mV ($batteryPct%)'
+        : '$batteryPct%';
+    final batteryRatio = (batteryPct / 100.0).clamp(0.0, 1.0);
+    final tempVal = controller.deviceStatus?.temperature ?? 32.5;
+    final tempDisplay = '${tempVal.toStringAsFixed(1)}°C (Normal)';
+
+    return Container(
+      padding: AppInsets.all18,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: AppRadii.r22,
+        border: Border.all(color: AppPalette.hexFFEFEBF6, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: AppInsets.all6,
+                child: const Icon(
+                  Icons.memory_rounded,
+                  color: AppTheme.primaryPurple,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sensor Hardware Telemetry',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.darkPurple,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Live BLE diagnostics from on-skin sensor',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppPalette.hexFFE6F9EE,
+                  borderRadius: AppRadii.r10,
+                ),
+                child: const Text(
+                  'ACTIVE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: AppPalette.hexFF10B981,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTelemetryCell(
+                  icon: Icons.battery_charging_full_rounded,
+                  iconColor: AppPalette.hexFF10B981,
+                  label: 'Battery Voltage',
+                  value: batteryDisplay,
+                  hasProgressBar: true,
+                  progressRatio: batteryRatio,
+                  progressColor: AppPalette.hexFF10B981,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTelemetryCell(
+                  icon: Icons.thermostat_rounded,
+                  iconColor: AppPalette.hexFFF97316,
+                  label: 'Probe Temp',
+                  value: tempDisplay,
+                  caption: 'Skin Surface Norm',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTelemetryCell(
+                  icon: Icons.access_time_filled_rounded,
+                  iconColor: AppTheme.primaryPurple,
+                  label: 'Sensor Wear',
+                  value: 'Day $dayPassed of 14 • $remainingDays days left',
+                  hasProgressBar: true,
+                  progressRatio: wearRatio,
+                  progressColor: AppTheme.primaryPurple,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildTelemetryCell(
+                  icon: Icons.wifi,
+                  iconColor: AppPalette.hexFF00B2E2,
+                  label: 'Signal (RSSI)',
+                  value: '-58 dBm (Strong BLE)',
+                  caption: 'GATT Connected',
+                  captionColor: AppPalette.hexFF10B981,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(color: AppPalette.hexFFF2EEF8),
+          const SizedBox(height: 8),
+          Text(
+            'Model:  $deviceModel   •   Firmware: $firmware   •   SN: $serialNumber',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppTheme.textMuted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1247,5 +1237,46 @@ class ProfileScreen extends StatelessWidget {
         ),
       );
     }
+  }
+}
+
+class _CachedAvatar extends StatelessWidget {
+  const _CachedAvatar({required this.url, required this.size});
+  final String? url;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUrl = url != null && url!.isNotEmpty;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppTheme.primaryPurple, width: 2),
+        color: AppTheme.lightPurpleBg,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasUrl
+          ? Image.network(
+              url!,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              cacheWidth: UiPerf.cachePx(context, size),
+              filterQuality: UiPerf.imageFilter(context),
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => Icon(
+                Icons.person_outline_rounded,
+                color: AppTheme.primaryPurple,
+                size: size * 0.55,
+              ),
+            )
+          : Icon(
+              Icons.person_outline_rounded,
+              color: AppTheme.primaryPurple,
+              size: size * 0.55,
+            ),
+    );
   }
 }

@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import 'device_setup_screen.dart';
 
@@ -36,7 +37,7 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
   void _next() {
     if (_page < _pageCount - 1) {
       _controller.nextPage(
-        duration: const Duration(milliseconds: 280),
+        duration: UiPerf.pageTransition(context),
         curve: Curves.easeOut,
       );
     } else {
@@ -46,6 +47,7 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final transition = UiPerf.pageTransition(context);
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7F9),
       appBar: AppBar(
@@ -56,7 +58,7 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
           onPressed: () {
             if (_page > 0) {
               _controller.previousPage(
-                duration: const Duration(milliseconds: 280),
+                duration: transition,
                 curve: Curves.easeOut,
               );
             } else {
@@ -96,14 +98,22 @@ class _PairingGuideScreenState extends State<PairingGuideScreen> {
             ),
           ),
           Expanded(
-            child: PageView(
+            child: PageView.builder(
               controller: _controller,
-              onPageChanged: (i) => setState(() => _page = i),
-              children: const [
-                _CleanSitePage(),
-                _AssemblePage(),
-                _InsertPage(),
-              ],
+              itemCount: _pageCount,
+              allowImplicitScrolling: false,
+              onPageChanged: (i) {
+                if (_page == i) return;
+                setState(() => _page = i);
+              },
+              itemBuilder: (context, index) {
+                final page = switch (index) {
+                  0 => const _CleanSitePage(),
+                  1 => const _AssemblePage(),
+                  _ => const _InsertPage(),
+                };
+                return RepaintBoundary(child: page);
+              },
             ),
           ),
           Container(
@@ -449,19 +459,23 @@ class _StepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lowEnd = UiPerf.isLowEndLayout(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
+        border: lowEnd ? Border.all(color: const Color(0xFFE8ECF2)) : null,
+        boxShadow: lowEnd
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 2),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,11 +608,20 @@ class _SiteTile extends StatelessWidget {
     final asset = arm
         ? 'assets/images/guide_site_arm.jpg'
         : 'assets/images/guide_site_abdomen.jpg';
+    final cacheH = UiPerf.cachePx(context, 140);
     return Column(
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.asset(asset, height: 140, width: double.infinity, fit: BoxFit.cover),
+          child: Image.asset(
+            asset,
+            height: 140,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            cacheHeight: cacheH,
+            filterQuality: UiPerf.imageFilter(context),
+            gaplessPlayback: true,
+          ),
         ),
         const SizedBox(height: 6),
         Container(
@@ -649,6 +672,7 @@ class _Illustration extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cacheH = UiPerf.cachePx(context, 170);
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Image.asset(
@@ -656,6 +680,9 @@ class _Illustration extends StatelessWidget {
         height: 170,
         width: double.infinity,
         fit: BoxFit.cover,
+        cacheHeight: cacheH,
+        filterQuality: UiPerf.imageFilter(context),
+        gaplessPlayback: true,
       ),
     );
   }

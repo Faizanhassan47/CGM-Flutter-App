@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../widgets/page_top_bar.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/custom_text_field.dart';
@@ -139,24 +140,30 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
                             color: AppTheme.primaryPurple,
                             width: 2.5,
                           ),
-                          image: widget.controller.profilePictureUrl != null &&
-                                  widget.controller.profilePictureUrl!.isNotEmpty
-                              ? DecorationImage(
-                                  image: NetworkImage(
-                                    widget.controller.profilePictureUrl!,
-                                  ),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
+                          color: AppTheme.lightPurpleBg,
                         ),
-                        child: widget.controller.profilePictureUrl == null ||
-                                widget.controller.profilePictureUrl!.isEmpty
-                            ? const Icon(
+                        clipBehavior: Clip.antiAlias,
+                        child: widget.controller.profilePictureUrl != null &&
+                                widget.controller.profilePictureUrl!.isNotEmpty
+                            ? Image.network(
+                                widget.controller.profilePictureUrl!,
+                                width: 86,
+                                height: 86,
+                                fit: BoxFit.cover,
+                                cacheWidth: UiPerf.cachePx(context, 86),
+                                filterQuality: UiPerf.imageFilter(context),
+                                gaplessPlayback: true,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person_outline_rounded,
+                                  color: AppTheme.primaryPurple,
+                                  size: 48,
+                                ),
+                              )
+                            : const Icon(
                                 Icons.person_outline_rounded,
                                 color: AppTheme.primaryPurple,
                                 size: 48,
-                              )
-                            : null,
+                              ),
                       ),
                     ),
                     Positioned(

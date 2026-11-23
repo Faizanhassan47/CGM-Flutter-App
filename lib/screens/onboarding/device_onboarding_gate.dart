@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/pill_button.dart';
 import 'pairing_guide_screen.dart';
@@ -41,18 +42,19 @@ class _DeviceOnboardingGateState extends State<DeviceOnboardingGate> {
   @override
   Widget build(BuildContext context) {
     final busy = _starting || _skipping;
+    final compact = UiPerf.isLowEndLayout(context);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+          padding: EdgeInsets.fromLTRB(24, compact ? 20 : 28, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
+              Text(
                 'Set up your sensor',
                 style: TextStyle(
-                  fontSize: 26,
+                  fontSize: compact ? 24 : 26,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.darkPurple,
                 ),

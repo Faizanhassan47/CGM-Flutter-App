@@ -302,10 +302,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ? samplesNewestFirst
         : samplesNewestFirst.take(9).toList();
     // Keep denser points so pinch-zoom stays smooth and detailed.
+    final lowEnd = UiPerf.isLowEndLayout(context);
     final chartSamples = hasRealData
         ? UiPerf.downsample(
             samplesForView,
-            maxPoints: UiPerf.isLowEndLayout(context) ? 160 : 360,
+            maxPoints: lowEnd ? 96 : 360,
           )
         : const <GlucoseSample>[];
 
@@ -370,6 +371,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             await _loadFromServer();
           },
           child: ListView(
+            cacheExtent: UiPerf.listCacheExtent(context),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             children: [
               _buildTopHeader(),
@@ -519,7 +521,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     },
                     borderRadius: AppRadii.r16,
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      duration: UiPerf.pageTransition(context),
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
                         color: isSelected
@@ -611,13 +613,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         color: AppColors.surface,
         borderRadius: AppRadii.r22,
         border: Border.all(color: AppColors.surfaceBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: UiPerf.softShadow(
+          context,
+          color: AppColors.black.withValues(alpha: 0.02),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -717,13 +718,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         color: AppColors.surface,
         borderRadius: AppRadii.r22,
         border: Border.all(color: AppColors.surfaceBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: UiPerf.softShadow(
+          context,
+          color: AppColors.black.withValues(alpha: 0.02),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -929,9 +929,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
 
     setState(() => _showAllReadings = true);
-    while (mounted && _hasMore) {
+    // Cap page fetches on low-end to avoid loading thousands of rows at once.
+    final maxPages = UiPerf.isLowEndLayout(context) ? 3 : 12;
+    var pagesLoaded = 0;
+    while (mounted && _hasMore && pagesLoaded < maxPages) {
       final previousPage = _page;
       await _loadFromServer(append: true);
+      pagesLoaded += 1;
       if (_page == previousPage) break;
     }
   }
@@ -1167,13 +1171,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         color: AppColors.surface,
         borderRadius: AppRadii.r16,
         border: Border.all(color: AppColors.surfaceBorder),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.black.withValues(alpha: 0.02),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: UiPerf.softShadow(
+          context,
+          color: AppColors.black.withValues(alpha: 0.02),
+          blurRadius: 8,
+          offset: const Offset(0, 3),
+        ),
       ),
       child: Column(
         children: [
@@ -1311,6 +1314,7 @@ class _ZoomableTrendChartState extends State<_ZoomableTrendChart>
 
   late final AnimationController _resetCtrl;
   Animation<Offset>? _resetAnim;
+  bool _resetConfigured = false;
 
   @override
   void initState() {
@@ -1323,6 +1327,14 @@ class _ZoomableTrendChartState extends State<_ZoomableTrendChart>
           final anim = _resetAnim;
           if (anim != null) _view.value = anim.value;
         });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_resetConfigured) return;
+    _resetConfigured = true;
+    _resetCtrl.duration = UiPerf.pageTransition(context);
   }
 
   @override
@@ -1343,7 +1355,10 @@ class _ZoomableTrendChartState extends State<_ZoomableTrendChart>
 
   void reset({bool animate = true}) {
     _resetCtrl.stop();
-    if (!animate || (_view.value.dx == 1.0 && _view.value.dy == 0.5)) {
+    final skipMotion = UiPerf.skipDecorativeMotion(context);
+    if (!animate ||
+        skipMotion ||
+        (_view.value.dx == 1.0 && _view.value.dy == 0.5)) {
       _view.value = const Offset(1, 0.5);
       if (_zoomedChrome) setState(() => _zoomedChrome = false);
       return;
@@ -1490,17 +1505,26 @@ class _ZoomableTrendChartState extends State<_ZoomableTrendChart>
                   builder: (context, view, _) {
                     final window = _window(view.dx, view.dy);
                     final labels = _axisLabels(window.$1, window.$2);
+                    final lowEnd = UiPerf.isLowEndLayout(context);
+                    // Further downsample the visible window while zooming.
+                    final paintSamples = lowEnd
+                        ? UiPerf.downsample(
+                            widget.samples,
+                            maxPoints: view.dx > 2 ? 80 : 96,
+                          )
+                        : widget.samples;
                     return Column(
                       children: [
                         Expanded(
                           child: RepaintBoundary(
                             child: CustomPaint(
                               painter: _HistoryTrendPainter(
-                                samples: widget.samples,
+                                samples: paintSamples,
                                 startTime: window.$1,
                                 endTime: window.$2,
                                 lowTarget: widget.lowTarget,
                                 highTarget: widget.highTarget,
+                                lowEnd: lowEnd,
                               ),
                               child: const SizedBox.expand(),
                             ),
@@ -1548,6 +1572,7 @@ class _HistoryTrendPainter extends CustomPainter {
     required this.endTime,
     required this.lowTarget,
     required this.highTarget,
+    this.lowEnd = false,
   });
 
   final List<GlucoseSample> samples;
@@ -1555,6 +1580,7 @@ class _HistoryTrendPainter extends CustomPainter {
   final DateTime endTime;
   final double lowTarget;
   final double highTarget;
+  final bool lowEnd;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1576,60 +1602,72 @@ class _HistoryTrendPainter extends CustomPainter {
 
     final corridorPaint = Paint()
       ..color = AppPalette.hexFFC7F9CC.withValues(alpha: 0.45)
-      ..style = PaintingStyle.fill;
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = !lowEnd;
     canvas.drawRRect(
       RRect.fromRectAndRadius(targetRect, const Radius.circular(6)),
       corridorPaint,
     );
 
-    // Dashed lines for corridor limits and high limit (180, 55, 300)
+    // Corridor / urgent guide lines — solid on low-end (cheaper than dashes).
     final dashCorridorPaint = Paint()
       ..color = AppPalette.hexFF57CC99.withValues(alpha: 0.6)
       ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    _drawDashedLine(
-      canvas,
-      Offset(0, targetTop),
-      Offset(w, targetTop),
-      dashCorridorPaint,
-    );
-    _drawDashedLine(
-      canvas,
-      Offset(0, targetBottom),
-      Offset(w, targetBottom),
-      dashCorridorPaint,
-    );
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = !lowEnd;
+    if (lowEnd) {
+      canvas.drawLine(Offset(0, targetTop), Offset(w, targetTop), dashCorridorPaint);
+      canvas.drawLine(
+        Offset(0, targetBottom),
+        Offset(w, targetBottom),
+        dashCorridorPaint,
+      );
+    } else {
+      _drawDashedLine(
+        canvas,
+        Offset(0, targetTop),
+        Offset(w, targetTop),
+        dashCorridorPaint,
+      );
+      _drawDashedLine(
+        canvas,
+        Offset(0, targetBottom),
+        Offset(w, targetBottom),
+        dashCorridorPaint,
+      );
+    }
 
-    // Urgent line dashed (55 & 300)
-    final dashUrgentPaint = Paint()
-      ..color = AppPalette.hexFFB39DDB.withValues(alpha: 0.7)
-      ..strokeWidth = 1.2
-      ..style = PaintingStyle.stroke;
     final urgentTop = yForMg(250);
     final urgentBottom = yForMg(55);
-    _drawDashedLine(
-      canvas,
-      Offset(0, urgentTop),
-      Offset(w, urgentTop),
-      dashUrgentPaint,
-    );
-    final dashLowPaint = Paint()
-      ..color = AppPalette.hexFF80DEEA.withValues(alpha: 0.7)
-      ..strokeWidth = 1.2
-      ..style = PaintingStyle.stroke;
-    _drawDashedLine(
-      canvas,
-      Offset(0, urgentBottom),
-      Offset(w, urgentBottom),
-      dashLowPaint,
-    );
+    if (!lowEnd) {
+      final dashUrgentPaint = Paint()
+        ..color = AppPalette.hexFFB39DDB.withValues(alpha: 0.7)
+        ..strokeWidth = 1.2
+        ..style = PaintingStyle.stroke;
+      _drawDashedLine(
+        canvas,
+        Offset(0, urgentTop),
+        Offset(w, urgentTop),
+        dashUrgentPaint,
+      );
+      final dashLowPaint = Paint()
+        ..color = AppPalette.hexFF80DEEA.withValues(alpha: 0.7)
+        ..strokeWidth = 1.2
+        ..style = PaintingStyle.stroke;
+      _drawDashedLine(
+        canvas,
+        Offset(0, urgentBottom),
+        Offset(w, urgentBottom),
+        dashLowPaint,
+      );
+    }
 
-    // 2. Y-Axis Value Labels (300, 180, 130, 90, 55)
+    // 2. Y-Axis Value Labels (fewer on low-end)
     _drawYLabel(canvas, '300', yForMg(300));
-    _drawYLabel(canvas, '180', yForMg(180));
+    if (!lowEnd) _drawYLabel(canvas, '180', yForMg(180));
     _drawYLabel(canvas, '130', yForMg(130));
     _drawYLabel(canvas, '90', yForMg(90));
-    _drawYLabel(canvas, '55', yForMg(55));
+    if (!lowEnd) _drawYLabel(canvas, '55', yForMg(55));
 
     // 3. Draw Samples Wave
     if (samples.isEmpty) return;
@@ -1730,6 +1768,7 @@ class _HistoryTrendPainter extends CustomPainter {
         oldDelegate.startTime != startTime ||
         oldDelegate.endTime != endTime ||
         oldDelegate.lowTarget != lowTarget ||
-        oldDelegate.highTarget != highTarget;
+        oldDelegate.highTarget != highTarget ||
+        oldDelegate.lowEnd != lowEnd;
   }
 }

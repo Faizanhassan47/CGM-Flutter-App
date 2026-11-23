@@ -191,6 +191,7 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 24),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -326,26 +327,35 @@ class _PatientProfileSetupScreenState extends State<PatientProfileSetupScreen> {
               ),
 
               const SizedBox(height: 48),
-              PillButton(
-                text: 'Save & Continue to Device Setup',
-                loading: widget.controller.loading,
-                onPressed: _onSaveAndContinue,
-              ),
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: widget.controller.loading
-                    ? null
-                    : _onCancelAccountCreation,
-                icon: const Icon(Icons.close_rounded, size: 18),
-                label: const Text('Cancel account creation'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.dangerDark,
-                  minimumSize: const Size.fromHeight(44),
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              ListenableBuilder(
+                listenable: widget.controller,
+                builder: (context, _) {
+                  final loading = widget.controller.loading;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      PillButton(
+                        text: 'Save & Continue to Device Setup',
+                        loading: loading,
+                        onPressed: _onSaveAndContinue,
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: loading ? null : _onCancelAccountCreation,
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        label: const Text('Cancel account creation'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.dangerDark,
+                          minimumSize: const Size.fromHeight(44),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 20),
             ],

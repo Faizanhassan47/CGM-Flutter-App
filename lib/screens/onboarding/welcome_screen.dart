@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key, required this.onDone});
@@ -73,7 +74,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   void _next() {
     if (_index < _pages.length - 1) {
-      _page.nextPage(duration: const Duration(milliseconds: 280), curve: Curves.easeOut);
+      _page.nextPage(
+        duration: UiPerf.pageTransition(context),
+        curve: Curves.easeOut,
+      );
     } else {
       widget.onDone();
     }
@@ -81,6 +85,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final skipMotion = UiPerf.skipDecorativeMotion(context);
     return Scaffold(
       backgroundColor: AppColors.surface,
       body: SafeArea(
@@ -92,8 +97,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 child: PageView.builder(
                   controller: _page,
                   itemCount: _pages.length,
-                  onPageChanged: (value) => setState(() => _index = value),
-                  itemBuilder: (context, index) => _SlideView(slide: _pages[index]),
+                  allowImplicitScrolling: false,
+                  onPageChanged: (value) {
+                    if (_index == value) return;
+                    setState(() => _index = value);
+                  },
+                  itemBuilder: (context, index) => RepaintBoundary(
+                    child: _SlideView(
+                      slide: _pages[index],
+                      lowEnd: skipMotion,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
@@ -101,8 +115,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(_pages.length, (index) {
                   final active = index == _index;
+                  final dot = Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: active ? 8 : 7,
+                    height: active ? 8 : 7,
+                    decoration: BoxDecoration(
+                      color: active ? AppColors.primary : AppColors.primaryBorder,
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                  if (skipMotion) return dot;
                   return AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                    duration: const Duration(milliseconds: 180),
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     width: active ? 8 : 7,
                     height: active ? 8 : 7,
@@ -145,8 +169,9 @@ class _Slide {
 }
 
 class _SlideView extends StatelessWidget {
-  const _SlideView({required this.slide});
+  const _SlideView({required this.slide, required this.lowEnd});
   final _Slide slide;
+  final bool lowEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -165,15 +190,16 @@ class _SlideView extends StatelessWidget {
           style: const TextStyle(fontSize: 15, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 36),
-        Expanded(child: _Illustration(slide: slide)),
+        Expanded(child: _Illustration(slide: slide, lowEnd: lowEnd)),
       ],
     );
   }
 }
 
 class _Illustration extends StatelessWidget {
-  const _Illustration({required this.slide});
+  const _Illustration({required this.slide, required this.lowEnd});
   final _Slide slide;
+  final bool lowEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -197,7 +223,18 @@ class _Illustration extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 8))],
+                  boxShadow: lowEnd
+                      ? null
+                      : const [
+                          BoxShadow(
+                            color: Color(0x14000000),
+                            blurRadius: 16,
+                            offset: Offset(0, 8),
+                          ),
+                        ],
+                  border: lowEnd
+                      ? Border.all(color: const Color(0xFFE8ECF2))
+                      : null,
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -249,12 +286,14 @@ class _ChartCard extends StatelessWidget {
       height: 90,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: const Color(0xFFF3F5F8), borderRadius: BorderRadius.circular(14)),
-      child: CustomPaint(painter: _SparkPainter()),
+      child: const CustomPaint(painter: _SparkPainter()),
     );
   }
 }
 
 class _SparkPainter extends CustomPainter {
+  const _SparkPainter();
+
   @override
   void paint(Canvas canvas, Size size) {
     final path = Path()
@@ -266,7 +305,8 @@ class _SparkPainter extends CustomPainter {
       ..color = AppColors.textPrimary
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
     canvas.drawPath(path, paint);
     canvas.drawCircle(Offset(size.width * 0.38, size.height * 0.55), 3.5, Paint()..color = AppColors.textPrimary);
     canvas.drawCircle(Offset(size.width * 0.7, size.height * 0.38), 4, Paint()..color = const Color(0xFFFFB020));

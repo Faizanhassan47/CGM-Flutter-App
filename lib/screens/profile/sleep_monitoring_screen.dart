@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../widgets/page_top_bar.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/pill_button.dart';
@@ -298,13 +299,12 @@ class _SleepMonitoringScreenState extends State<SleepMonitoringScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: AppRadii.r18,
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryPurple.withValues(alpha: 0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        boxShadow: UiPerf.softShadow(
+          context,
+          color: AppTheme.primaryPurple.withValues(alpha: 0.05),
+          blurRadius: 16,
+          offset: const Offset(0, 6),
+        ),
         border: Border.all(color: AppPalette.hexFFECEAF4),
       ),
       child: Column(

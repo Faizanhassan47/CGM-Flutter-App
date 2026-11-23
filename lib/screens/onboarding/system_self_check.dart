@@ -6,6 +6,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/app_config.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 
 class PhoneReadiness {
   const PhoneReadiness({
@@ -113,7 +114,13 @@ class _SystemSelfCheckState extends State<SystemSelfCheck>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refresh();
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
+    // Defer interval selection until first frame (needs MediaQuery).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final seconds = UiPerf.isLowEndLayout(context) ? 4 : 2;
+      _timer?.cancel();
+      _timer = Timer.periodic(Duration(seconds: seconds), (_) => _refresh());
+    });
   }
 
   @override
@@ -131,6 +138,13 @@ class _SystemSelfCheckState extends State<SystemSelfCheck>
   Future<void> _refresh() async {
     final result = await readPhoneReadiness();
     if (!mounted) return;
+    if (bluetoothOn == result.bluetoothOn &&
+        bluetoothAllowed == result.bluetoothAllowed &&
+        networkOn == result.networkOn &&
+        notificationsOn == result.notificationsOn &&
+        compatible == result.compatible) {
+      return;
+    }
     setState(() {
       bluetoothOn = result.bluetoothOn;
       bluetoothAllowed = result.bluetoothAllowed;

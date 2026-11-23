@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/device_time.dart';
+import '../../core/ui_perf.dart';
 import '../../services/report_pdf_service.dart';
 import '../../state/app_controller.dart';
 import '../../widgets/page_top_bar.dart';
@@ -161,8 +162,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   ) async {
     final rows = <Map<String, dynamic>>[];
     var page = 1;
-    const pageSize = 200;
-    while (page <= 25) {
+    final lowEnd = mounted && UiPerf.isLowEndLayout(context);
+    final pageSize = lowEnd ? 80 : 200;
+    final maxPages = lowEnd ? 10 : 25;
+    while (page <= maxPages) {
       final res = await widget.controller.fetchGlucoseHistoryPage(
         startUtc: start,
         endUtc: end,
@@ -737,6 +740,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           color: AppColors.primary,
           onRefresh: _loadReport,
           child: ListView(
+            cacheExtent: UiPerf.listCacheExtent(context),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             children: [
               PageTopBar(
@@ -1381,7 +1385,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
           ),
           const Divider(height: 1, color: AppColors.surfaceBorder),
-          for (var i = 0; i < items.length; i++) ...[
+          ...() {
+            final maxRows =
+                UiPerf.isLowEndLayout(context) ? 30 : items.length;
+            final visible = items.length > maxRows
+                ? items.sublist(0, maxRows)
+                : items;
+            return [
+              for (var i = 0; i < visible.length; i++) ...[
             if (i > 0)
               const Divider(height: 1, color: AppColors.surfaceBorder),
             Padding(
@@ -1394,7 +1405,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                          items[i].dateLabel,
+                          visible[i].dateLabel,
                               style: const TextStyle(
                             fontSize: 13,
                                 fontWeight: FontWeight.w700,
@@ -1402,7 +1413,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               ),
                             ),
                             Text(
-                          '${items[i].readingsCount} readings',
+                          '${visible[i].readingsCount} readings',
                               style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary,
@@ -1414,7 +1425,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   Expanded(
                     flex: 2,
                           child: Text(
-                      '${items[i].avgGlucose}',
+                      '${visible[i].avgGlucose}',
                       textAlign: TextAlign.center,
                             style: const TextStyle(
                         fontSize: 14,
@@ -1436,7 +1447,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               borderRadius: AppRadii.r12,
                             ),
                             child: Text(
-                        '${items[i].inRangePct.toStringAsFixed(0)}%',
+                        '${visible[i].inRangePct.toStringAsFixed(0)}%',
                         textAlign: TextAlign.center,
                               style: const TextStyle(
                           fontSize: 12,
@@ -1449,7 +1460,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   Expanded(
                     flex: 2,
                           child: Text(
-                      '${items[i].below70Pct.toStringAsFixed(0)}% / ${items[i].highPct.toStringAsFixed(0)}%',
+                      '${visible[i].below70Pct.toStringAsFixed(0)}% / ${visible[i].highPct.toStringAsFixed(0)}%',
                       textAlign: TextAlign.right,
                             style: const TextStyle(
                         fontSize: 11,
@@ -1461,7 +1472,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ],
               ),
             ),
-          ],
+              ],
+              if (items.length > visible.length)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+                  child: Text(
+                    'Showing ${visible.length} of ${items.length} days',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+            ];
+          }(),
         ],
       ),
     );

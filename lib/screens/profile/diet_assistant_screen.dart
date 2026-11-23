@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_theme.dart';
+import '../../core/ui_perf.dart';
 import '../../widgets/page_top_bar.dart';
 import '../../services/api_service.dart';
 
@@ -104,6 +105,7 @@ class _DietAssistantScreenState extends State<DietAssistantScreen> {
 
   Widget _dietBody() {
     return ListView(
+        cacheExtent: UiPerf.listCacheExtent(context),
         padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
         children: [
           _buildStatusBar(),
@@ -219,22 +221,13 @@ class _DietAssistantScreenState extends State<DietAssistantScreen> {
     ),
   );
 
-  Widget _buildQuickQuestions() => GridView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    itemCount: _quickQuestions.length,
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 2,
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      childAspectRatio: 1.25,
-    ),
-    itemBuilder: (_, index) {
-      final item = _quickQuestions[index];
+  Widget _buildQuickQuestions() {
+    Widget tile((String, String, IconData) item) {
       return InkWell(
         onTap: () => _ask(item.$2),
         borderRadius: BorderRadius.circular(16),
         child: Container(
+          height: 108,
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -254,16 +247,36 @@ class _DietAssistantScreenState extends State<DietAssistantScreen> {
                 ),
               ),
               const SizedBox(height: 3),
-              Text(
+              const Text(
                 'Ask AIMA',
-                style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
               ),
             ],
           ),
         ),
       );
-    },
-  );
+    }
+
+    // Column+Rows avoids nested GridView layout inside the parent ListView.
+    final rows = <Widget>[];
+    for (var i = 0; i < _quickQuestions.length; i += 2) {
+      rows.add(
+        Row(
+          children: [
+            Expanded(child: tile(_quickQuestions[i])),
+            const SizedBox(width: 10),
+            Expanded(
+              child: i + 1 < _quickQuestions.length
+                  ? tile(_quickQuestions[i + 1])
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      );
+      if (i + 2 < _quickQuestions.length) rows.add(const SizedBox(height: 10));
+    }
+    return Column(children: rows);
+  }
 
   Widget _buildRecentQuestions() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
