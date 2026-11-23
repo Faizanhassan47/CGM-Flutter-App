@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/app_theme.dart';
@@ -47,6 +49,22 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
     super.initState();
     _pillWidths = [for (final tab in _tabs) _widthForLabel(tab.label)];
     _pillController = AnimationController.unbounded(vsync: this, value: 0);
+    // Build other tabs offstage after Home settles so the first tap isn't cold.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_warmInactiveTabs());
+    });
+  }
+
+  /// Mount History / Activities / Profile while the user is still on Home.
+  Future<void> _warmInactiveTabs() async {
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    for (final index in const [1, 2, 3]) {
+      if (!mounted) return;
+      if (_mountedTabs.contains(index)) continue;
+      setState(() => _mountedTabs.add(index));
+      // Yield so each offstage build gets its own frame budget.
+      await Future<void>.delayed(const Duration(milliseconds: 280));
+    }
   }
 
   @override

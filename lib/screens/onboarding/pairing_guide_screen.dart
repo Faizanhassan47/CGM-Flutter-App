@@ -6,6 +6,25 @@ import 'device_setup_screen.dart';
 
 /// Shows the apply-sensor guide, then opens device setup if the user finishes it.
 Future<void> openDeviceSetup(BuildContext context, AppController controller) async {
+  // Decode guide images before the route opens so the first page isn't blank/janky.
+  await Future.wait([
+    for (final asset in const [
+      'assets/images/guide_site_abdomen.jpg',
+      'assets/images/guide_site_arm.jpg',
+      'assets/images/guide_clean.jpg',
+      'assets/images/guide_prepare.jpg',
+      'assets/images/guide_align.jpg',
+      'assets/images/guide_press.jpg',
+      'assets/images/guide_unlock.jpg',
+      'assets/images/guide_lift.jpg',
+      'assets/images/guide_insert.jpg',
+      'assets/images/guide_patch.jpg',
+      'assets/images/device_disposable.png',
+      'assets/images/device_reusable.png',
+    ])
+      precacheImage(AssetImage(asset), context),
+  ]);
+  if (!context.mounted) return;
   final ready = await Navigator.of(context).push<bool>(
     MaterialPageRoute(builder: (_) => const PairingGuideScreen()),
   );
