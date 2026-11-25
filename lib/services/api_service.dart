@@ -15,6 +15,50 @@ class ApiException implements Exception {
   final int? statusCode;
   final Map<String, dynamic>? data;
 
+  /// Nest ApiQueue `QUEUE_BUSY` (503) — lane wait queue was full.
+  bool get isQueueBusy {
+    if (_queueCode == 'QUEUE_BUSY') return true;
+    if (statusCode != 503) return false;
+    final lower = message.toLowerCase();
+    return lower.contains('busy') ||
+        lower.contains('try again') ||
+        lower.contains('starting');
+  }
+
+  /// Nest ApiQueue `QUEUE_TIMEOUT` (408) — lane HTTP timeout elapsed.
+  bool get isQueueTimeout =>
+      _queueCode == 'QUEUE_TIMEOUT' || statusCode == 408;
+
+  String? get queueLane {
+    final direct = data?['lane']?.toString();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final nested = data?['message'];
+    if (nested is Map) {
+      final lane = nested['lane']?.toString();
+      if (lane != null && lane.isNotEmpty) return lane;
+    }
+    return null;
+  }
+
+  /// Suggested backoff from the queue error body (ms).
+  int? get retryAfterMs {
+    final raw = data?['retryAfterMs'] ??
+        (data?['message'] is Map ? (data!['message'] as Map)['retryAfterMs'] : null);
+    if (raw is num) return raw.toInt();
+    return int.tryParse('$raw');
+  }
+
+  String? get _queueCode {
+    final direct = data?['code']?.toString();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final nested = data?['message'];
+    if (nested is Map) {
+      final code = nested['code']?.toString();
+      if (code != null && code.isNotEmpty) return code;
+    }
+    return null;
+  }
+
   bool get requiresEmailVerification {
     if (data == null) return false;
     if (data!['requiresEmailVerification'] == true) return true;
@@ -101,6 +145,7 @@ class ApiService {
     Object? body,
     Map<String, dynamic>? query,
     bool retry = true,
+    int queueAttempt = 1,
   }) async {
     final request = http.Request(method, _uri(path, query));
     request.headers.addAll({
@@ -113,13 +158,42 @@ class ApiService {
     final response = await http.Response.fromStream(streamed);
 
     if (response.statusCode == 401 && retry && await _refresh()) {
-      return _send(method, path, body: body, query: query, retry: false);
+      return _send(
+        method,
+        path,
+        body: body,
+        query: query,
+        retry: false,
+        queueAttempt: queueAttempt,
+      );
     }
-    return _handle(response);
+
+    try {
+      return _handle(response);
+    } on ApiException catch (e) {
+      // Retry QUEUE_BUSY using server-suggested backoff (multi-lane ApiQueue).
+      const maxQueueAttempts = 3;
+      if (e.isQueueBusy && queueAttempt < maxQueueAttempts) {
+        final waitMs = e.retryAfterMs ?? (400 * queueAttempt);
+        debugPrint(
+          '[API] QUEUE_BUSY on $path lane=${e.queueLane ?? '?'} '
+          '(attempt $queueAttempt/$maxQueueAttempts) — retry in ${waitMs}ms',
+        );
+        await Future<void>.delayed(Duration(milliseconds: waitMs));
+        return _send(
+          method,
+          path,
+          body: body,
+          query: query,
+          retry: retry,
+          queueAttempt: queueAttempt + 1,
+        );
+      }
+      rethrow;
+    }
   }
 
-  /// Public auth posts retry briefly on 503 — Hostinger often returns
-  /// "Starting" while Nest finishes boot after idle/restart.
+  /// Public auth posts retry briefly on 503 — Hostinger wake + ApiQueue busy.
   Future<dynamic> _publicPost(String path, Object body) async {
     const maxAttempts = 4;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -131,10 +205,18 @@ class ApiService {
       if (response.statusCode != 503 || attempt == maxAttempts) {
         return _handle(response);
       }
-      debugPrint(
-        '[API] 503 on $path (attempt $attempt/$maxAttempts) — retrying after Hostinger wake',
+      final decoded = _decode(response);
+      final err = ApiException(
+        _message(decoded, 'Server is busy.'),
+        statusCode: response.statusCode,
+        data: decoded is Map ? _map(decoded) : null,
       );
-      await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
+      final waitMs = err.retryAfterMs ?? (700 * attempt);
+      debugPrint(
+        '[API] 503 on $path lane=${err.queueLane ?? '?'} '
+        '(attempt $attempt/$maxAttempts) — retry in ${waitMs}ms',
+      );
+      await Future<void>.delayed(Duration(milliseconds: waitMs));
     }
     throw const ApiException(
       'Server is waking up. Try again in a moment.',
